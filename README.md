@@ -6,8 +6,6 @@
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-green?style=flat-square)](https://minecraft.net)
 [![Fabric](https://img.shields.io/badge/Fabric-0.19.3+-blue?style=flat-square)](https://fabricmc.net)
-[![License](https://img.shields.io/github/license/WisePlace/TaskBlocks?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/WisePlace/TaskBlocks?style=flat-square)](https://github.com/WisePlace/TaskBlocks/releases)
 
 *Create, manage and run automation scripts directly in Minecraft — no mods knowledge required.*
 
