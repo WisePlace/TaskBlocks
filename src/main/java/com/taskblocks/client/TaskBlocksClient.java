@@ -1,0 +1,122 @@
+package com.taskblocks.client;
+
+import com.taskblocks.TaskBlocks;
+import com.taskblocks.client.gui.ScriptMenuScreen;
+import com.taskblocks.script.ScriptData;
+import com.taskblocks.script.ScriptLoader;
+import com.taskblocks.script.ScriptRunner;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.util.Identifier;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class TaskBlocksClient implements ClientModInitializer {
+
+    public static KeyBinding openMenuKey;
+
+    private static final KeyBinding.Category TASKBLOCKS_CATEGORY =
+        KeyBinding.Category.create(Identifier.of("taskblocks", "general"));
+
+    private static List<ScriptData> cachedScripts = null;
+
+    // Tracks previous tick key state to detect rising edge (just pressed)
+    private static final Map<String, Boolean> prevKeyState = new HashMap<>();
+
+    public static void reloadScripts() {
+        cachedScripts = ScriptLoader.loadScripts();
+        prevKeyState.clear();
+        TaskBlocks.LOGGER.info("[TaskBlocks] Scripts reloaded: " + cachedScripts.size());
+    }
+
+    public static List<ScriptData> getCachedScripts() {
+        return cachedScripts;
+    }
+
+    @Override
+    public void onInitializeClient() {
+        openMenuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.taskblocks.open_menu",
+            InputUtil.Type.KEYSYM,
+            GLFW.GLFW_KEY_J,
+            TASKBLOCKS_CATEGORY
+        ));
+
+        reloadScripts();
+        ScriptOverlay.register();
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            TaskBlocksNotifier.flushMessages();
+            if (client.player == null) return;
+
+            // Open menu
+            while (openMenuKey.wasPressed()) {
+                if (client.currentScreen == null) {
+                    client.setScreen(new ScriptMenuScreen());
+                }
+            }
+
+            if (cachedScripts == null) return;
+
+            for (ScriptData script : cachedScripts) {
+                if (!script.enabled) continue;
+                if (script.startStopKey == null
+                        || script.startStopKey.equalsIgnoreCase("NONE")) continue;
+
+                boolean pressed = isKeyDown(client, script.startStopKey);
+                boolean wasPressed = prevKeyState.getOrDefault(script.startStopKey, false);
+
+            if (pressed && !wasPressed) {
+                // Check for keybind conflicts
+                long conflictCount = cachedScripts.stream()
+                    .filter(s -> s.enabled
+                        && s.startStopKey != null
+                        && s.startStopKey.equalsIgnoreCase(script.startStopKey))
+                    .count();
+                if (conflictCount > 1) {
+                    TaskBlocks.LOGGER.warn("[TaskBlocks] Keybind conflict on '"
+                        + script.startStopKey
+                        + "' — multiple scripts share this key, only '"
+                        + script.name + "' will trigger.");
+                    TaskBlocksNotifier.warn("Keybind conflict on '"
+                        + script.startStopKey
+                        + "' — multiple scripts share this key, only '"
+                        + script.name + "' will trigger.");
+                }
+
+                if (ScriptRunner.isRunning()
+                        && script.name.equals(ScriptRunner.getRunningScriptName())) {
+                    ScriptRunner.stop();
+                    TaskBlocks.LOGGER.info("[TaskBlocks] Stopped: " + script.name);
+                } else if (!ScriptRunner.isRunning()) {
+                    ScriptRunner.run(script, 0);
+                    TaskBlocks.LOGGER.info("[TaskBlocks] Started: " + script.name);
+                }
+            }
+
+                prevKeyState.put(script.startStopKey, pressed);
+            }
+        });
+
+        TaskBlocks.LOGGER.info("[TaskBlocks] Client initialized.");
+    }
+
+    private static boolean isKeyDown(MinecraftClient client, String keyName) {
+        try {
+            String normalized = keyName.toLowerCase().replace("_", ".");
+            String translationKey = normalized.startsWith("key.keyboard.")
+                ? normalized
+                : "key.keyboard." + normalized;
+            InputUtil.Key key = InputUtil.fromTranslationKey(translationKey);
+            return InputUtil.isKeyPressed(client.getWindow(), key.getCode());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}

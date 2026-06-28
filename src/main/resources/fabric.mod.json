@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "taskblocks",
+  "version": "${version}",
+  "name": "TaskBlocks",
+  "description": "In-game automation script runner for Minecraft.",
+  "authors": ["WisePlace"],
+  "license": "MIT",
+  "icon": "assets/taskblocks/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "main": ["com.taskblocks.TaskBlocks"],
+    "client": ["com.taskblocks.client.TaskBlocksClient"]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
