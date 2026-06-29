@@ -300,6 +300,15 @@ public class MouseActions {
             }
             return ActionResult.normal();
         }
+        if (action.equalsIgnoreCase("mouse_lock")) {
+            ScriptRunner.lockMousePosition();
+            return ActionResult.normal();
+        }
+
+        if (action.equalsIgnoreCase("mouse_unlock")) {
+            ScriptRunner.unlockMousePosition();
+            return ActionResult.normal();
+        }
         return null;
     }
 }

@@ -42,7 +42,6 @@ public class FlowActions {
             return ActionResult.normal();
         }
 
-        // --- loop(count, targetLine) ---
         if (action.startsWith("loop(") && action.endsWith(")")) {
             String inner = action.substring(5, action.length() - 1).trim();
             String[] parts = inner.split(",");
@@ -51,23 +50,24 @@ public class FlowActions {
                     int count      = Integer.parseInt(parts[0].trim());
                     int targetLine = Integer.parseInt(parts[1].trim()) - 1;
 
-                    if (ctx.loopCounters[ctx.currentLine] == 0) {
-                        ctx.loopCounters[ctx.currentLine] = count;
+                    // Initialize counter on first visit
+                    if (!ctx.loopCounters.containsKey(ctx.currentLine)) {
+                        ctx.loopCounters.put(ctx.currentLine, count);
                     }
 
-                    if (ctx.loopCounters[ctx.currentLine] > 1) {
-                        ctx.loopCounters[ctx.currentLine]--;
+                    int remaining = ctx.loopCounters.get(ctx.currentLine);
 
-                        // Reset all inner loop counters so they run fresh on next iteration
-                        for (int i = targetLine; i < ctx.currentLine; i++) {
-                            if (i != ctx.currentLine) {
-                                ctx.loopCounters[i] = 0;
-                            }
-                        }
+                    if (remaining > 1) {
+                        ctx.loopCounters.put(ctx.currentLine, remaining - 1);
+
+                        // Reset all inner loop counters so they re-initialize fresh
+                        ctx.loopCounters.entrySet().removeIf(e ->
+                            e.getKey() >= targetLine && e.getKey() < ctx.currentLine);
 
                         return ActionResult.jump(targetLine);
                     } else {
-                        ctx.loopCounters[ctx.currentLine] = 0;
+                        // Loop done — remove so it re-initializes if reached again
+                        ctx.loopCounters.remove(ctx.currentLine);
                         return ActionResult.normal();
                     }
                 } catch (NumberFormatException e) {

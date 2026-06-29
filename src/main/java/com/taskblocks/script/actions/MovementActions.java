@@ -20,16 +20,14 @@ public class MovementActions {
             String inner = action.substring(5, action.length() - 1).trim();
             String[] parts = inner.split(",");
 
-            // Resolve target yaw and pitch
             Float targetYaw   = null;
             Float targetPitch = null;
-            int   steps       = 1;   // default: instant
+            int   steps       = 1;
             long  delayMs     = 0;
-            int   argOffset   = 0;   // how many args were consumed by direction/yaw/pitch
+            int   argOffset   = 0;
 
             String first = parts[0].trim().toLowerCase();
 
-            // Cardinal / vertical direction keywords
             switch (first) {
                 case "north" -> { targetYaw = 180f;  targetPitch = 0f;   argOffset = 1; }
                 case "south" -> { targetYaw = 0f;    targetPitch = 0f;   argOffset = 1; }
@@ -38,7 +36,6 @@ public class MovementActions {
                 case "up"    -> { targetYaw = null;  targetPitch = -90f; argOffset = 1; }
                 case "down"  -> { targetYaw = null;  targetPitch = 90f;  argOffset = 1; }
                 default -> {
-                    // Numeric yaw + pitch
                     try {
                         targetYaw = Float.parseFloat(parts[0].trim());
                         if (parts.length >= 2) {
@@ -55,13 +52,12 @@ public class MovementActions {
                 }
             }
 
-            // Parse optional steps and delayMs
             if (parts.length > argOffset) {
                 try {
                     steps   = Integer.parseInt(parts[argOffset].trim());
                     delayMs = parts.length > argOffset + 1
                         ? Long.parseLong(parts[argOffset + 1].trim())
-                        : 16; // default 16ms per step if steps given but no delay
+                        : 16;
                 } catch (NumberFormatException e) {
                     TaskBlocks.LOGGER.error("[TaskBlocks] Invalid look() steps/delay: " + inner);
                     TaskBlocksNotifier.error("Invalid look() steps/delay: §f" + inner);
@@ -69,7 +65,6 @@ public class MovementActions {
                 }
             }
 
-            // Clamp pitch
             if (targetPitch != null) {
                 targetPitch = MathHelper.clamp(targetPitch, -90f, 90f);
             }
@@ -79,7 +74,8 @@ public class MovementActions {
 
             if (steps <= 1) {
                 // Instant
-                java.util.concurrent.CountDownLatch instantLatch = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.CountDownLatch instantLatch =
+                    new java.util.concurrent.CountDownLatch(1);
                 client.execute(() -> {
                     if (client.player != null) {
                         if (finalTargetYaw   != null) client.player.setYaw(finalTargetYaw);
@@ -90,10 +86,10 @@ public class MovementActions {
                 instantLatch.await();
                 Thread.sleep(50);
             } else {
-                // Smooth — interpolate from current to target over N steps
-                // We read current values once before the loop
+                // Smooth — read starting position once, then fire-and-forget each step
                 float[] current = new float[2];
-                java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.CountDownLatch latch =
+                    new java.util.concurrent.CountDownLatch(1);
                 client.execute(() -> {
                     if (client.player != null) {
                         current[0] = client.player.getYaw();
@@ -108,33 +104,28 @@ public class MovementActions {
                 float endYaw     = finalTargetYaw   != null ? finalTargetYaw   : startYaw;
                 float endPitch   = finalTargetPitch != null ? finalTargetPitch : startPitch;
 
-                // For yaw, take the shortest rotation path
                 float yawDiff = endYaw - startYaw;
                 while (yawDiff > 180f)  yawDiff -= 360f;
                 while (yawDiff < -180f) yawDiff += 360f;
-                final float finalYawDiff   = yawDiff;
+
+                final float finalYawDiff    = yawDiff;
                 final float finalStartYaw   = startYaw;
                 final float finalStartPitch = startPitch;
                 final float finalEndPitch   = endPitch;
-                final int   finalSteps      = steps;
 
-                for (int i = 1; i <= finalSteps; i++) {
+                for (int i = 1; i <= steps; i++) {
                     if (Thread.currentThread().isInterrupted()) break;
-                    float t = (float) i / finalSteps;
+                    float t      = (float) i / steps;
                     float smooth = t * t * (3f - 2f * t);
-                    float newYaw   = finalStartYaw   + finalYawDiff * smooth;
+                    float newYaw   = finalStartYaw   + finalYawDiff   * smooth;
                     float newPitch = finalStartPitch + (finalEndPitch - finalStartPitch) * smooth;
 
-                    java.util.concurrent.CountDownLatch stepLatch = 
-                        new java.util.concurrent.CountDownLatch(1);
                     client.execute(() -> {
                         if (client.player != null) {
                             client.player.setYaw(newYaw);
                             client.player.setPitch(MathHelper.clamp(newPitch, -90f, 90f));
                         }
-                        stepLatch.countDown();
                     });
-                    stepLatch.await();
                     Thread.sleep(delayMs);
                 }
             }

@@ -39,6 +39,24 @@ public class ScriptRunner {
         return (System.currentTimeMillis() - scriptStartTime) / 1000;
     }
 
+    private static volatile boolean mouseLocked = false;
+    private static volatile float lockedYaw = 0f;
+    private static volatile float lockedPitch = 0f;
+
+    public static void lockMousePosition() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null) {
+            lockedYaw   = client.player.getYaw();
+            lockedPitch = client.player.getPitch();
+        }
+        mouseLocked = true;
+    }
+
+    public static void unlockMousePosition() {
+        mouseLocked = false;
+    }
+
+    public static boolean isMousePositionLocked() { return mouseLocked; }
     // ============================================================
     // Hold state management
     // ============================================================
@@ -76,6 +94,11 @@ public class ScriptRunner {
 
     
     public static void tick(MinecraftClient client) {
+        if (mouseLocked && client.player != null) {
+            client.player.setYaw(lockedYaw);
+            client.player.setPitch(lockedPitch);
+        }
+
         if (!running || client.player == null) return;
 
         // Re-apply held mouse buttons
@@ -132,6 +155,7 @@ public class ScriptRunner {
     public static void stop() {
         running = false;
         scriptStartTime = 0;
+        ScriptRunner.unlockMousePosition();
         releaseAll();
         MinecraftClient mc = MinecraftClient.getInstance();
         mc.execute(() -> {
@@ -188,6 +212,7 @@ public class ScriptRunner {
                 running = false;
                 runningScriptName = null;
                 scriptStartTime = 0;
+                ScriptRunner.unlockMousePosition();
                 releaseAll();
                 MinecraftClient mc = MinecraftClient.getInstance();
                 mc.execute(() -> {
@@ -237,7 +262,7 @@ public class ScriptRunner {
     // ============================================================
 
     private static void executeActions(List<String> actions) throws InterruptedException {
-        int[] loopCounters = new int[actions.size()];
+        Map<Integer, Integer> loopCounters = new java.util.HashMap<>();
         Map<String, String> variables = new java.util.HashMap<>();
         int cursor = 0;
 
