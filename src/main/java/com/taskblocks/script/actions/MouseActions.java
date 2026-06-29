@@ -2,6 +2,7 @@ package com.taskblocks.script.actions;
 
 import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.TaskBlocksNotifier;
+import com.taskblocks.script.ScriptRunner;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.screen.slot.SlotActionType;
@@ -32,6 +33,7 @@ public class MouseActions {
         // left_click_press — hold left click
         if (action.equalsIgnoreCase("left_click_press")) {
             client.execute(() -> client.options.attackKey.setPressed(true));
+            ScriptRunner.holdMouse("left");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -39,6 +41,7 @@ public class MouseActions {
         // left_click_release — release left click
         if (action.equalsIgnoreCase("left_click_release")) {
             client.execute(() -> client.options.attackKey.setPressed(false));
+            ScriptRunner.releaseMouse("left");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -55,6 +58,7 @@ public class MouseActions {
         // right_click_press — hold right click
         if (action.equalsIgnoreCase("right_click_press")) {
             client.execute(() -> client.options.useKey.setPressed(true));
+            ScriptRunner.holdMouse("right");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -62,6 +66,7 @@ public class MouseActions {
         // right_click_release — release right click
         if (action.equalsIgnoreCase("right_click_release")) {
             client.execute(() -> client.options.useKey.setPressed(false));
+            ScriptRunner.releaseMouse("right");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -93,7 +98,6 @@ public class MouseActions {
 
         // ============================================================
         // SCREEN ACTIONS
-        // All actions that interact with open GUI screens
         // ============================================================
 
         // screen_close — closes any open screen
@@ -107,13 +111,12 @@ public class MouseActions {
         }
 
         // screen_click(slot) or screen_click(slot, left|right|middle)
-        // Left click on a slot — picks up or places item
         if (action.startsWith("screen_click(") && action.endsWith(")")) {
             String inner = action.substring(13, action.length() - 1).trim();
             String[] parts = inner.split(",");
             try {
                 int slot   = Integer.parseInt(parts[0].trim());
-                int button = 0; // default: left
+                int button = 0;
                 if (parts.length >= 2) {
                     button = switch (parts[1].trim().toLowerCase()) {
                         case "right"  -> 1;
@@ -139,8 +142,7 @@ public class MouseActions {
             return ActionResult.normal();
         }
 
-        // screen_shift_click(slot) — shift+click a slot
-        // Moves entire stack to the other inventory section
+        // screen_shift_click(slot)
         if (action.startsWith("screen_shift_click(") && action.endsWith(")")) {
             String inner = action.substring(19, action.length() - 1).trim();
             try {
@@ -161,8 +163,7 @@ public class MouseActions {
             return ActionResult.normal();
         }
 
-        // screen_move(fromSlot, toSlot) — move item from one slot to another
-        // Does: left click fromSlot (pick up), left click toSlot (place)
+        // screen_move(fromSlot, toSlot)
         if (action.startsWith("screen_move(") && action.endsWith(")")) {
             String inner = action.substring(12, action.length() - 1).trim();
             String[] parts = inner.split(",");
@@ -173,7 +174,6 @@ public class MouseActions {
                     int syncId   = client.player != null
                         ? client.player.currentScreenHandler.syncId : 0;
 
-                    // Pick up from source
                     client.execute(() -> {
                         if (client.player != null && client.player.currentScreenHandler != null)
                             client.interactionManager.clickSlot(
@@ -183,7 +183,6 @@ public class MouseActions {
                     });
                     Thread.sleep(100);
 
-                    // Place at destination
                     client.execute(() -> {
                         if (client.player != null && client.player.currentScreenHandler != null)
                             client.interactionManager.clickSlot(
@@ -197,15 +196,13 @@ public class MouseActions {
                     TaskBlocksNotifier.error("Invalid screen_move args: §f" + inner);
                 }
             } else {
-                TaskBlocks.LOGGER.error("[TaskBlocks] screen_move needs 2 args: screen_move(from, to)");
+                TaskBlocks.LOGGER.error("[TaskBlocks] screen_move needs 2 args");
                 TaskBlocksNotifier.error("screen_move needs 2 args: screen_move(from, to)");
             }
             return ActionResult.normal();
         }
 
-        // screen_move_stack(fromSlot, toSlot) — move entire stack one item at a time
-        // Uses right-click drag to split, or just shift-click for efficiency
-        // Actually uses QUICK_MOVE (shift-click behavior) from source then places at dest
+        // screen_move_stack(fromSlot, toSlot)
         if (action.startsWith("screen_move_stack(") && action.endsWith(")")) {
             String inner = action.substring(18, action.length() - 1).trim();
             String[] parts = inner.split(",");
@@ -216,7 +213,6 @@ public class MouseActions {
                     int syncId   = client.player != null
                         ? client.player.currentScreenHandler.syncId : 0;
 
-                    // Pick up entire stack from source
                     client.execute(() -> {
                         if (client.player != null && client.player.currentScreenHandler != null)
                             client.interactionManager.clickSlot(
@@ -226,7 +222,6 @@ public class MouseActions {
                     });
                     Thread.sleep(100);
 
-                    // Place entire stack at destination
                     client.execute(() -> {
                         if (client.player != null && client.player.currentScreenHandler != null)
                             client.interactionManager.clickSlot(
@@ -246,8 +241,7 @@ public class MouseActions {
             return ActionResult.normal();
         }
 
-        // screen_drop(slot) — drop item from slot out of inventory
-        // Slot -999 = click outside = drop held item
+        // screen_drop(slot)
         if (action.startsWith("screen_drop(") && action.endsWith(")")) {
             String inner = action.substring(12, action.length() - 1).trim();
             try {
@@ -268,6 +262,44 @@ public class MouseActions {
             return ActionResult.normal();
         }
 
-        return null; // not handled
+        // screen_select_all(slot)
+        if (action.startsWith("screen_select_all(") && action.endsWith(")")) {
+            String inner = action.substring(18, action.length() - 1).trim();
+            try {
+                int slot = Integer.parseInt(inner.trim());
+                client.execute(() -> {
+                    if (client.player != null && client.player.currentScreenHandler != null)
+                        client.interactionManager.clickSlot(
+                            client.player.currentScreenHandler.syncId,
+                            slot, 0,
+                            SlotActionType.PICKUP,
+                            client.player);
+                });
+                Thread.sleep(100);
+                client.execute(() -> {
+                    if (client.player != null && client.player.currentScreenHandler != null)
+                        client.interactionManager.clickSlot(
+                            client.player.currentScreenHandler.syncId,
+                            slot, 0,
+                            SlotActionType.PICKUP_ALL,
+                            client.player);
+                });
+                Thread.sleep(100);
+                client.execute(() -> {
+                    if (client.player != null && client.player.currentScreenHandler != null)
+                        client.interactionManager.clickSlot(
+                            client.player.currentScreenHandler.syncId,
+                            slot, 0,
+                            SlotActionType.PICKUP,
+                            client.player);
+                });
+                Thread.sleep(100);
+            } catch (NumberFormatException e) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] Invalid screen_select_all args: " + inner);
+                TaskBlocksNotifier.error("Invalid screen_select_all args: §f" + inner);
+            }
+            return ActionResult.normal();
+        }
+        return null;
     }
 }

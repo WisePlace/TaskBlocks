@@ -1,7 +1,9 @@
 package com.taskblocks.script.actions;
 
-import com.taskblocks.client.TaskBlocksNotifier;
 import com.taskblocks.TaskBlocks;
+import com.taskblocks.client.TaskBlocksNotifier;
+import com.taskblocks.script.ScriptRunner;
+
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -32,11 +34,13 @@ public class KeyboardActions {
         // jump_press / jump_release
         if (action.equalsIgnoreCase("jump_press")) {
             triggerKey(client, client.options.jumpKey, true);
+            ScriptRunner.holdKey("jump");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("jump_release")) {
             triggerKey(client, client.options.jumpKey, false);
+            ScriptRunner.releaseKey("jump");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -44,11 +48,13 @@ public class KeyboardActions {
         // sneak_press / sneak_release
         if (action.equalsIgnoreCase("sneak_press")) {
             triggerKey(client, client.options.sneakKey, true);
+            ScriptRunner.holdKey("sneak");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("sneak_release")) {
             triggerKey(client, client.options.sneakKey, false);
+            ScriptRunner.releaseKey("sneak");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -56,11 +62,13 @@ public class KeyboardActions {
         // sprint_press / sprint_release
         if (action.equalsIgnoreCase("sprint_press")) {
             triggerKey(client, client.options.sprintKey, true);
+            ScriptRunner.holdKey("sprint");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("sprint_release")) {
             triggerKey(client, client.options.sprintKey, false);
+            ScriptRunner.releaseKey("sprint");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -68,11 +76,13 @@ public class KeyboardActions {
         // forward_press / forward_release
         if (action.equalsIgnoreCase("forward_press")) {
             triggerKey(client, client.options.forwardKey, true);
+            ScriptRunner.holdKey("forward");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("forward_release")) {
             triggerKey(client, client.options.forwardKey, false);
+            ScriptRunner.releaseKey("forward");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -80,11 +90,13 @@ public class KeyboardActions {
         // backward_press / backward_release
         if (action.equalsIgnoreCase("backward_press")) {
             triggerKey(client, client.options.backKey, true);
+            ScriptRunner.holdKey("backward");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("backward_release")) {
             triggerKey(client, client.options.backKey, false);
+            ScriptRunner.releaseKey("backward");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -92,11 +104,13 @@ public class KeyboardActions {
         // left_press / left_release
         if (action.equalsIgnoreCase("left_press")) {
             triggerKey(client, client.options.leftKey, true);
+            ScriptRunner.holdKey("left");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("left_release")) {
             triggerKey(client, client.options.leftKey, false);
+            ScriptRunner.releaseKey("left");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -104,11 +118,13 @@ public class KeyboardActions {
         // right_press / right_release
         if (action.equalsIgnoreCase("right_press")) {
             triggerKey(client, client.options.rightKey, true);
+            ScriptRunner.holdKey("right");
             Thread.sleep(30);
             return ActionResult.normal();
         }
         if (action.equalsIgnoreCase("right_release")) {
             triggerKey(client, client.options.rightKey, false);
+            ScriptRunner.releaseKey("right");
             Thread.sleep(30);
             return ActionResult.normal();
         }
@@ -122,7 +138,7 @@ public class KeyboardActions {
             return ActionResult.normal();
         }
 
-        // drop_stack — drop entire stack (ctrl+drop)
+        // drop_stack — drop entire stack
         if (action.equalsIgnoreCase("drop_stack")) {
             client.execute(() -> {
                 if (client.player != null) {
@@ -144,8 +160,6 @@ public class KeyboardActions {
 
         // ============================================================
         // DEFAULT KEY ALIASES
-        // key_forward, key_backward, key_left, key_right,
-        // key_jump, key_sneak, key_sprint, key_drop, key_inventory
         // These tap the player's actual bound key — works regardless
         // of what key the user has configured in Minecraft settings
         // ============================================================
@@ -212,6 +226,7 @@ public class KeyboardActions {
                     KeyBinding.setKeyPressed(key, true);
                     KeyBinding.onKeyPressed(key);
                 });
+                ScriptRunner.holdKey(keyName);
                 Thread.sleep(30);
             }
             return ActionResult.normal();
@@ -222,6 +237,7 @@ public class KeyboardActions {
             InputUtil.Key key = resolveKey(keyName);
             if (key != null) {
                 client.execute(() -> KeyBinding.setKeyPressed(key, false));
+                ScriptRunner.releaseKey(keyName);
                 Thread.sleep(30);
             }
             return ActionResult.normal();
@@ -272,7 +288,7 @@ public class KeyboardActions {
         TaskBlocks.LOGGER.error("[TaskBlocks] Unknown key: '" + keyName
             + "'. Examples: e, w, space, left.shift, left.control, f1...");
         TaskBlocksNotifier.error("Unknown key: §f" + keyName
-            + "'. Examples: e, w, space, left.shift, left.control, f1...");
+            + " — Examples: e, w, space, left.shift, left.control, f1...");
         return null;
     }
 }

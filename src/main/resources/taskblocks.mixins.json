@@ -3,7 +3,10 @@
   "package": "com.taskblocks.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
-  "client": [],
+  "client": [
+      "KeyBindingMixin",
+      "MinecraftClientMixin"
+    ],
   "injectors": {
     "defaultRequire": 1
   }

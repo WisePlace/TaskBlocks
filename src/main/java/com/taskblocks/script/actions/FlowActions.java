@@ -57,6 +57,14 @@ public class FlowActions {
 
                     if (ctx.loopCounters[ctx.currentLine] > 1) {
                         ctx.loopCounters[ctx.currentLine]--;
+
+                        // Reset all inner loop counters so they run fresh on next iteration
+                        for (int i = targetLine; i < ctx.currentLine; i++) {
+                            if (i != ctx.currentLine) {
+                                ctx.loopCounters[i] = 0;
+                            }
+                        }
+
                         return ActionResult.jump(targetLine);
                     } else {
                         ctx.loopCounters[ctx.currentLine] = 0;
@@ -91,6 +99,6 @@ public class FlowActions {
             return ActionResult.end();
         }
 
-        return null; // not handled
+        return null;
     }
 }

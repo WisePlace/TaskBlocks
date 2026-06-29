@@ -27,7 +27,6 @@ public class TaskBlocksClient implements ClientModInitializer {
 
     private static List<ScriptData> cachedScripts = null;
 
-    // Tracks previous tick key state to detect rising edge (just pressed)
     private static final Map<String, Boolean> prevKeyState = new HashMap<>();
 
     public static void reloadScripts() {
@@ -51,8 +50,11 @@ public class TaskBlocksClient implements ClientModInitializer {
 
         reloadScripts();
         ScriptOverlay.register();
+
+        // Main tick — handles menu, keybinds, notifier
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             TaskBlocksNotifier.flushMessages();
+            ScriptRunner.tick(client);
             if (client.player == null) return;
 
             // Open menu
@@ -72,35 +74,52 @@ public class TaskBlocksClient implements ClientModInitializer {
                 boolean pressed = isKeyDown(client, script.startStopKey);
                 boolean wasPressed = prevKeyState.getOrDefault(script.startStopKey, false);
 
-            if (pressed && !wasPressed) {
-                // Check for keybind conflicts
-                long conflictCount = cachedScripts.stream()
-                    .filter(s -> s.enabled
-                        && s.startStopKey != null
-                        && s.startStopKey.equalsIgnoreCase(script.startStopKey))
-                    .count();
-                if (conflictCount > 1) {
-                    TaskBlocks.LOGGER.warn("[TaskBlocks] Keybind conflict on '"
-                        + script.startStopKey
-                        + "' — multiple scripts share this key, only '"
-                        + script.name + "' will trigger.");
-                    TaskBlocksNotifier.warn("Keybind conflict on '"
-                        + script.startStopKey
-                        + "' — multiple scripts share this key, only '"
-                        + script.name + "' will trigger.");
-                }
+                if (pressed && !wasPressed) {
+                    long conflictCount = cachedScripts.stream()
+                        .filter(s -> s.enabled
+                            && s.startStopKey != null
+                            && s.startStopKey.equalsIgnoreCase(script.startStopKey))
+                        .count();
+                    if (conflictCount > 1) {
+                        TaskBlocks.LOGGER.warn("[TaskBlocks] Keybind conflict on '"
+                            + script.startStopKey
+                            + "' — multiple scripts share this key, only '"
+                            + script.name + "' will trigger.");
+                        TaskBlocksNotifier.notice("Keybind conflict on '"
+                            + script.startStopKey
+                            + "' — only '" + script.name + "' will trigger.");
+                    }
 
-                if (ScriptRunner.isRunning()
-                        && script.name.equals(ScriptRunner.getRunningScriptName())) {
-                    ScriptRunner.stop();
-                    TaskBlocks.LOGGER.info("[TaskBlocks] Stopped: " + script.name);
-                } else if (!ScriptRunner.isRunning()) {
-                    ScriptRunner.run(script, 0);
-                    TaskBlocks.LOGGER.info("[TaskBlocks] Started: " + script.name);
+                    if (ScriptRunner.isRunning()
+                            && script.name.equals(ScriptRunner.getRunningScriptName())) {
+                        ScriptRunner.stop();
+                        TaskBlocks.LOGGER.info("[TaskBlocks] Stopped: " + script.name);
+                    } else if (!ScriptRunner.isRunning()) {
+                        ScriptRunner.run(script, 0);
+                        TaskBlocks.LOGGER.info("[TaskBlocks] Started: " + script.name);
+                    }
                 }
-            }
 
                 prevKeyState.put(script.startStopKey, pressed);
+            }
+        });
+
+        // Force block breaking even when a screen is open
+        ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            if (!ScriptRunner.isRunning()) return;
+            if (client.player == null || client.interactionManager == null) return;
+            if (client.currentScreen == null) return;
+            if (ScriptRunner.isHoldingMouse("left")) {
+                client.options.attackKey.setPressed(true);
+                client.attackCooldown = 0;
+                // Call handleBlockBreaking logic directly without the accessor
+                if (client.crosshairTarget instanceof net.minecraft.util.hit.BlockHitResult hit) {
+                    if (!client.world.getBlockState(hit.getBlockPos()).isAir()) {
+                        client.interactionManager.updateBlockBreakingProgress(
+                            hit.getBlockPos(), hit.getSide());
+                        client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+                    }
+                }
             }
         });
 

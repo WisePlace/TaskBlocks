@@ -79,24 +79,29 @@ public class MovementActions {
 
             if (steps <= 1) {
                 // Instant
+                java.util.concurrent.CountDownLatch instantLatch = new java.util.concurrent.CountDownLatch(1);
                 client.execute(() -> {
                     if (client.player != null) {
                         if (finalTargetYaw   != null) client.player.setYaw(finalTargetYaw);
                         if (finalTargetPitch != null) client.player.setPitch(finalTargetPitch);
                     }
+                    instantLatch.countDown();
                 });
+                instantLatch.await();
                 Thread.sleep(50);
             } else {
                 // Smooth — interpolate from current to target over N steps
                 // We read current values once before the loop
                 float[] current = new float[2];
+                java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
                 client.execute(() -> {
                     if (client.player != null) {
                         current[0] = client.player.getYaw();
                         current[1] = client.player.getPitch();
                     }
+                    latch.countDown();
                 });
-                Thread.sleep(20); // let execute() run
+                latch.await();
 
                 float startYaw   = current[0];
                 float startPitch = current[1];
@@ -116,16 +121,20 @@ public class MovementActions {
                 for (int i = 1; i <= finalSteps; i++) {
                     if (Thread.currentThread().isInterrupted()) break;
                     float t = (float) i / finalSteps;
-                    // Smooth step interpolation (ease in/out)
                     float smooth = t * t * (3f - 2f * t);
                     float newYaw   = finalStartYaw   + finalYawDiff * smooth;
                     float newPitch = finalStartPitch + (finalEndPitch - finalStartPitch) * smooth;
+
+                    java.util.concurrent.CountDownLatch stepLatch = 
+                        new java.util.concurrent.CountDownLatch(1);
                     client.execute(() -> {
                         if (client.player != null) {
                             client.player.setYaw(newYaw);
                             client.player.setPitch(MathHelper.clamp(newPitch, -90f, 90f));
                         }
+                        stepLatch.countDown();
                     });
+                    stepLatch.await();
                     Thread.sleep(delayMs);
                 }
             }
