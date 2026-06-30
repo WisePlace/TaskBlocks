@@ -261,9 +261,10 @@ public class ScriptRunner {
     // Execute actions
     // ============================================================
 
-    private static void executeActions(List<String> actions) throws InterruptedException {
+        private static void executeActions(List<String> actions) throws InterruptedException {
         Map<Integer, Integer> loopCounters = new java.util.HashMap<>();
         Map<String, String> variables = new java.util.HashMap<>();
+        java.util.Set<Integer> dispatchedBranches = new java.util.HashSet<>();
         int cursor = 0;
 
         while (cursor < actions.size() && running) {
@@ -275,7 +276,7 @@ public class ScriptRunner {
             }
 
             String interpolated = interpolate(raw, variables);
-            ActionContext ctx = new ActionContext(cursor, loopCounters, variables);
+            ActionContext ctx = new ActionContext(cursor, loopCounters, variables, actions, dispatchedBranches);
             ActionResult result = ActionRegistry.execute(interpolated, ctx);
 
             if (result.type == ActionResult.Type.END) {
