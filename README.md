@@ -39,7 +39,7 @@ No programming knowledge needed — scripts are plain text files with simple act
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) for Minecraft **1.21.11**
 2. Download [Fabric API](https://modrinth.com/mod/fabric-api) and place it in your `mods/` folder
-3. Download `TaskBlocks-1.0.0.jar` from the [latest release](https://github.com/WisePlace/TaskBlocks/releases/latest)
+3. Download `TaskBlocks.jar` from the [latest release](https://github.com/WisePlace/TaskBlocks/releases/latest)
 4. Place it in your `mods/` folder
 5. Launch the game!
 
