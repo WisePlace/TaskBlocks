@@ -3,12 +3,12 @@ package com.taskblocks.script.actions;
 import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.TaskBlocksNotifier;
 
+import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.block.BlockState;
 
 public class WorldActions {
 
@@ -38,8 +38,6 @@ public class WorldActions {
 
         // ============================================================
         // block_break — hold left click until targeted block breaks
-        // Polls every 50ms to detect when block becomes air
-        // Times out after 30 seconds as safety net
         // ============================================================
         if (action.equalsIgnoreCase("block_break")) {
             BlockPos[] targetPos = new BlockPos[1];
@@ -82,13 +80,8 @@ public class WorldActions {
 
         // ============================================================
         // item_use — use item until fully consumed
-        // Holds right click and waits until the item is used
-        // (food eaten, potion drunk, etc.)
-        // Detects completion by watching item stack or use state
-        // Times out after 10 seconds
         // ============================================================
         if (action.equalsIgnoreCase("item_use")) {
-            // Get current item count before using
             int[] initialCount = {0};
             client.execute(() -> {
                 if (client.player != null)
@@ -96,7 +89,6 @@ public class WorldActions {
             });
             Thread.sleep(30);
 
-            // Start holding use key
             client.execute(() -> {
                 if (client.player != null && client.interactionManager != null) {
                     client.interactionManager.interactItem(client.player, Hand.MAIN_HAND);
@@ -112,13 +104,10 @@ public class WorldActions {
                 boolean[] done = {false};
                 client.execute(() -> {
                     if (client.player != null) {
-                        // Done if: item count decreased, stack is empty,
-                        // or player is no longer using an item
                         int currentCount = client.player.getMainHandStack().getCount();
                         boolean countChanged = currentCount < initialCount[0]
                             || client.player.getMainHandStack().isEmpty();
                         boolean notUsingItem = !client.player.isUsingItem();
-                        // We wait until they stop using AND something changed
                         done[0] = countChanged || (notUsingItem
                             && System.currentTimeMillis() - startTime > 500);
                     }
@@ -127,7 +116,6 @@ public class WorldActions {
                 if (done[0]) break;
             }
 
-            // Release use key
             client.execute(() -> {
                 if (client.player != null && client.interactionManager != null) {
                     client.options.useKey.setPressed(false);
@@ -155,12 +143,10 @@ public class WorldActions {
 
         // ============================================================
         // wait_until_on_ground — pause until player lands
-        // Times out after 10 seconds
         // ============================================================
         if (action.equalsIgnoreCase("wait_until_on_ground")) {
             long startTime = System.currentTimeMillis();
             long timeout   = 10_000L;
-            // Small initial delay so we don't catch "on ground" before the jump registers
             Thread.sleep(100);
             while (System.currentTimeMillis() - startTime < timeout) {
                 boolean[] onGround = {false};
@@ -248,7 +234,6 @@ public class WorldActions {
                 try {
                     int from = Integer.parseInt(parts[0].trim());
                     int to   = Integer.parseInt(parts[1].trim());
-                    // Pick up from source
                     client.execute(() -> {
                         if (client.player != null && client.player.currentScreenHandler != null)
                             client.interactionManager.clickSlot(
@@ -256,7 +241,6 @@ public class WorldActions {
                                 from, 0, SlotActionType.PICKUP, client.player);
                     });
                     Thread.sleep(100);
-                    // Place at destination
                     client.execute(() -> {
                         if (client.player != null && client.player.currentScreenHandler != null)
                             client.interactionManager.clickSlot(
@@ -312,14 +296,11 @@ public class WorldActions {
 
         // ============================================================
         // screen_select_all(slot) — collect all similar items to slot
-        // Picks up the item from slot first, then double-clicks to
-        // collect all matching items, then places back
         // ============================================================
         if (action.startsWith("screen_select_all(") && action.endsWith(")")) {
             String inner = action.substring(18, action.length() - 1).trim();
             try {
                 int slot = Integer.parseInt(inner.trim());
-                // Step 1: pick up item from slot
                 client.execute(() -> {
                     if (client.player != null && client.player.currentScreenHandler != null)
                         client.interactionManager.clickSlot(
@@ -327,7 +308,6 @@ public class WorldActions {
                             slot, 0, SlotActionType.PICKUP, client.player);
                 });
                 Thread.sleep(100);
-                // Step 2: double click (PICKUP_ALL) to collect all similar
                 client.execute(() -> {
                     if (client.player != null && client.player.currentScreenHandler != null)
                         client.interactionManager.clickSlot(
@@ -335,7 +315,6 @@ public class WorldActions {
                             slot, 0, SlotActionType.PICKUP_ALL, client.player);
                 });
                 Thread.sleep(100);
-                // Step 3: place the collected stack back into the slot
                 client.execute(() -> {
                     if (client.player != null && client.player.currentScreenHandler != null)
                         client.interactionManager.clickSlot(
@@ -367,6 +346,59 @@ public class WorldActions {
             } catch (NumberFormatException e) {
                 TaskBlocks.LOGGER.error("[TaskBlocks] Invalid screen_drop args: " + inner);
                 TaskBlocksNotifier.error("Invalid screen_drop args: §f" + inner);
+            }
+            return ActionResult.normal();
+        }
+
+        // ============================================================
+        // get_block_below(varName) — block directly under the player's feet
+        // ============================================================
+        if (action.startsWith("get_block_below(") && action.endsWith(")")) {
+            String varName = action.substring(16, action.length() - 1).trim();
+            String[] result = new String[1];
+
+            client.execute(() -> {
+                if (client.player != null && client.world != null) {
+                    BlockPos pos = client.player.getBlockPos().down();
+                    BlockState state = client.world.getBlockState(pos);
+                    net.minecraft.util.Identifier id =
+                        net.minecraft.registry.Registries.BLOCK.getId(state.getBlock());
+                    result[0] = id.toString();
+                }
+            });
+            Thread.sleep(50);
+
+            if (result[0] != null) {
+                ctx.variables.put(varName, result[0]);
+            } else {
+                TaskBlocks.LOGGER.warn("[TaskBlocks] get_block_below: could not read block");
+                TaskBlocksNotifier.warn("get_block_below: could not read block");
+            }
+            return ActionResult.normal();
+        }
+
+        // ============================================================
+        // get_block_target(varName) — block the crosshair is currently on
+        // ============================================================
+        if (action.startsWith("get_block_target(") && action.endsWith(")")) {
+            String varName = action.substring(17, action.length() - 1).trim();
+            String[] result = new String[1];
+
+            client.execute(() -> {
+                if (client.world != null && client.crosshairTarget instanceof BlockHitResult hit) {
+                    BlockState state = client.world.getBlockState(hit.getBlockPos());
+                    net.minecraft.util.Identifier id =
+                        net.minecraft.registry.Registries.BLOCK.getId(state.getBlock());
+                    result[0] = id.toString();
+                }
+            });
+            Thread.sleep(50);
+
+            if (result[0] != null) {
+                ctx.variables.put(varName, result[0]);
+            } else {
+                TaskBlocks.LOGGER.warn("[TaskBlocks] get_block_target: not targeting a block");
+                TaskBlocksNotifier.warn("get_block_target: not targeting a block");
             }
             return ActionResult.normal();
         }
