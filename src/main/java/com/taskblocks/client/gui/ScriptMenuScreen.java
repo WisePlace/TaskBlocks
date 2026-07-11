@@ -4,7 +4,6 @@ import java.awt.Desktop;
 import java.io.File;
 import java.util.List;
 
-import com.taskblocks.client.ScriptOverlay;
 import com.taskblocks.client.TaskBlocksClient;
 import com.taskblocks.script.ScriptData;
 import com.taskblocks.script.ScriptLoader;
@@ -118,15 +117,17 @@ public class ScriptMenuScreen extends Screen {
             btn -> this.close()
         ).dimensions(px + PANEL_W / 2 - 35, py + PANEL_H - FOOTER_H + 9, 70, 18).build());
 
-        // Pin/unpin overlay button
+        // New Script icon button
         addDrawableChild(ButtonWidget.builder(
-            Text.literal(ScriptOverlay.isVisible() ? "⊙ Overlay: ON" : "⊙ Overlay: OFF"),
-            btn -> {
-                ScriptOverlay.toggle();
-                btn.setMessage(Text.literal(
-                    ScriptOverlay.isVisible() ? "⊙ Overlay: ON" : "⊙ Overlay: OFF"));
-            }
-        ).dimensions(px + PANEL_W - 100 - PAD, py + PANEL_H - FOOTER_H + 9, 100, 18).build());
+            Text.literal("+"),
+            btn -> this.client.setScreen(new CreateScriptScreen())
+        ).dimensions(px + PANEL_W - 18 - PAD - 18 - 6, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
+
+        // Settings icon button
+        addDrawableChild(ButtonWidget.builder(
+            Text.literal("\u2699"),
+            btn -> this.client.setScreen(new SettingsScreen(this))
+        ).dimensions(px + PANEL_W - 18 - PAD, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
     }
 
     private void openScriptFile(ScriptData script) {

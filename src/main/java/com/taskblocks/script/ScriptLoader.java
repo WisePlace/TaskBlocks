@@ -172,4 +172,57 @@ public class ScriptLoader {
         TaskBlocks.LOGGER.error("[TaskBlocks] Failed to save script: " + script.fileName, e);
     }
     }
+
+    // ============================================================
+    // Creates a new .tbs file with a minimal header and an empty
+    // actions body. Used by the "New Script" screen. If a file with
+    // the generated name already exists, a numeric suffix is appended
+    // rather than overwriting it.
+    // ============================================================
+    public static boolean createScript(String name, String author, boolean debug, String startStopKey) {
+        if (!Files.exists(SCRIPTS_DIR)) {
+            try {
+                Files.createDirectories(SCRIPTS_DIR);
+            } catch (IOException e) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] Could not create scripts directory.", e);
+                return false;
+            }
+        }
+
+        String baseName = sanitizeFileName(name);
+        String fileName = baseName + ".tbs";
+        Path filePath = SCRIPTS_DIR.resolve(fileName);
+
+        int suffix = 1;
+        while (Files.exists(filePath)) {
+            fileName = baseName + "_" + suffix + ".tbs";
+            filePath = SCRIPTS_DIR.resolve(fileName);
+            suffix++;
+        }
+
+        String key = (startStopKey == null || startStopKey.isBlank()) ? "NONE" : startStopKey.trim();
+
+        String content = "name=" + name + "\n"
+            + "author=" + author + "\n"
+            + "version=1.0\n"
+            + "enabled=true\n"
+            + "debug=" + debug + "\n"
+            + "start_stop_key=" + key + "\n"
+            + "\n"
+            + "[actions]\n"
+            + "end\n";
+
+        try {
+            Files.writeString(filePath, content);
+            return true;
+        } catch (IOException e) {
+            TaskBlocks.LOGGER.error("[TaskBlocks] Failed to create script: " + fileName, e);
+            return false;
+        }
+    }
+
+    private static String sanitizeFileName(String name) {
+        String sanitized = name.trim().replaceAll("[^a-zA-Z0-9._-]", "_");
+        return sanitized.isEmpty() ? "script" : sanitized;
+    }
 }
