@@ -36,6 +36,7 @@ public class ScriptRunner {
     private static volatile long tickCounter = 0;
     private static volatile String pendingChainScript = null;
     private static volatile Map<String, String> pendingChainVariables = null;
+    private static volatile Map<String, FunctionDef> currentFunctions = null;
     private static final java.util.concurrent.atomic.AtomicReference<ActionResult> pendingListenerControl =
         new java.util.concurrent.atomic.AtomicReference<>();
 
@@ -44,6 +45,12 @@ public class ScriptRunner {
     public static Map<String, String> getCurrentVariables() { return currentVariables; }
     public static Set<Integer> getCurrentDispatchedBranches() { return currentDispatchedBranches; }
     public static int getCurrentCursor() { return currentCursor; }
+
+    // Case-insensitive lookup into the running script's [functions] table.
+    public static FunctionDef getFunction(String name) {
+        Map<String, FunctionDef> functions = currentFunctions;
+        return functions == null ? null : functions.get(name.toLowerCase());
+    }
 
     public static void requestListenerControl(ActionResult result) {
         pendingListenerControl.set(result);
@@ -239,6 +246,7 @@ public class ScriptRunner {
             try {
                 Thread.sleep(initialDelayMs);
                 TaskBlocks.LOGGER.info("[TaskBlocks] Running: " + script.name);
+                currentFunctions = script.functions;
                 executeActions(script.actions, initialVariables);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -310,15 +318,14 @@ public class ScriptRunner {
     }
 
     // ============================================================
-    // Execute actions
+    // Execute actions (top-level script)
     // ============================================================
 
-        private static void executeActions(List<String> actions, Map<String, String> initialVariables) throws InterruptedException {
+    private static void executeActions(List<String> actions, Map<String, String> initialVariables) throws InterruptedException {
         Map<Integer, Integer> loopCounters = new java.util.HashMap<>();
         Map<String, String> variables = initialVariables != null
             ? new java.util.HashMap<>(initialVariables) : new java.util.HashMap<>();
         java.util.Set<Integer> dispatchedBranches = new java.util.HashSet<>();
-        int cursor = 0;
 
         currentActions = actions;
         currentLoopCounters = loopCounters;
@@ -327,58 +334,123 @@ public class ScriptRunner {
         pendingListenerControl.set(null);
 
         try {
-            while (cursor < actions.size() && running) {
-                currentCursor = cursor;
+            ExecOutcome outcome = runInstructionList(actions, loopCounters, variables, dispatchedBranches);
 
-                // A listener fired goto()/end()/run_script() since the last line —
-                // apply it before executing the next scripted line.
-                ActionResult pending = pendingListenerControl.getAndSet(null);
-                if (pending != null) {
-                    if (pending.type == ActionResult.Type.END) {
-                        TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by a listener action.");
-                        break;
-                    } else if (pending.type == ActionResult.Type.JUMP) {
-                        cursor = pending.targetLine;
-                        continue;
-                    } else if (pending.type == ActionResult.Type.CHAIN) {
-                        TaskBlocks.LOGGER.info("[TaskBlocks] Script chaining (via listener) to: " + pending.targetScript);
-                        pendingChainScript = pending.targetScript;
-                        pendingChainVariables = pending.chainVariables;
-                        break;
-                    }
-                }
-
-                String raw = actions.get(cursor).trim();
-
-                if (raw.isEmpty() || raw.startsWith("#")) {
-                    cursor++;
-                    continue;
-                }
-
-                String interpolated = interpolate(raw, variables);
-                ActionContext ctx = new ActionContext(cursor, loopCounters, variables, actions, dispatchedBranches);
-                ActionResult result = ActionRegistry.execute(interpolated, ctx);
-
-                if (result.type == ActionResult.Type.END) {
-                    TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by 'end' action.");
-                    break;
-                } else if (result.type == ActionResult.Type.CHAIN) {
-                    TaskBlocks.LOGGER.info("[TaskBlocks] Script chaining to: " + result.targetScript);
-                    pendingChainScript = result.targetScript;
-                    pendingChainVariables = result.chainVariables;
-                    break;
-                } else if (result.type == ActionResult.Type.JUMP) {
-                    cursor = result.targetLine;
-                } else {
-                    cursor++;
-                }
+            if (outcome.type == ExecOutcome.Type.ENDED) {
+                TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by 'end' action.");
+            } else if (outcome.type == ExecOutcome.Type.CHAINED) {
+                TaskBlocks.LOGGER.info("[TaskBlocks] Script chaining to: " + outcome.chainScript);
+                pendingChainScript = outcome.chainScript;
+                pendingChainVariables = outcome.chainVariables;
             }
+            // NORMAL or RETURNED at the top level both just mean the script finished.
         } finally {
             currentActions = null;
             currentLoopCounters = null;
             currentVariables = null;
             currentDispatchedBranches = null;
+            currentFunctions = null;
             EventListenerManager.clear();
         }
+    }
+
+    // ============================================================
+    // Execute a function body (called by call())
+    //
+    // Shares the caller's variables map (functions don't get isolated
+    // scope — the whole language treats variables as script-wide), but
+    // gets its own loop counters/branch state/cursor, so goto/loop/if
+    // inside a function operate on the function's own body without
+    // colliding with the caller's.
+    //
+    // END and CHAIN outcomes are handed back to the caller unchanged so
+    // they keep propagating upward through however many nested calls —
+    // 'end' and run_script() always affect the whole running script,
+    // never just the current function. Only RETURN stops here.
+    // ============================================================
+
+    public static ExecOutcome runFunction(FunctionDef function, Map<String, String> variables) throws InterruptedException {
+        Map<Integer, Integer> loopCounters = new java.util.HashMap<>();
+        java.util.Set<Integer> dispatchedBranches = new java.util.HashSet<>();
+
+        List<String> prevActions = currentActions;
+        Map<Integer, Integer> prevLoopCounters = currentLoopCounters;
+        Map<String, String> prevVariables = currentVariables;
+        Set<Integer> prevDispatchedBranches = currentDispatchedBranches;
+        int prevCursor = currentCursor;
+
+        currentActions = function.body;
+        currentLoopCounters = loopCounters;
+        currentVariables = variables;
+        currentDispatchedBranches = dispatchedBranches;
+
+        try {
+            return runInstructionList(function.body, loopCounters, variables, dispatchedBranches);
+        } finally {
+            currentActions = prevActions;
+            currentLoopCounters = prevLoopCounters;
+            currentVariables = prevVariables;
+            currentDispatchedBranches = prevDispatchedBranches;
+            currentCursor = prevCursor;
+        }
+    }
+
+    // ============================================================
+    // Shared instruction loop — used for both the top-level script and
+    // any function body invoked via call(). Handles JUMP/goto locally;
+    // END, CHAIN, and RETURN all stop this particular loop and report
+    // back to the caller via the returned ExecOutcome, which decides
+    // how far to propagate.
+    // ============================================================
+
+    private static ExecOutcome runInstructionList(List<String> lines, Map<Integer, Integer> loopCounters,
+                                                    Map<String, String> variables, Set<Integer> dispatchedBranches)
+            throws InterruptedException {
+        int cursor = 0;
+
+        while (cursor < lines.size() && running) {
+            currentCursor = cursor;
+
+            // A listener fired goto()/end()/run_script()/return() since the
+            // last line — apply it before executing the next scripted line.
+            ActionResult pending = pendingListenerControl.getAndSet(null);
+            if (pending != null) {
+                if (pending.type == ActionResult.Type.END) {
+                    return ExecOutcome.ended();
+                } else if (pending.type == ActionResult.Type.JUMP) {
+                    cursor = pending.targetLine;
+                    continue;
+                } else if (pending.type == ActionResult.Type.CHAIN) {
+                    return ExecOutcome.chained(pending.targetScript, pending.chainVariables);
+                } else if (pending.type == ActionResult.Type.RETURN) {
+                    return ExecOutcome.returned(pending.returnValue);
+                }
+            }
+
+            String raw = lines.get(cursor).trim();
+
+            if (raw.isEmpty() || raw.startsWith("#")) {
+                cursor++;
+                continue;
+            }
+
+            String interpolated = interpolate(raw, variables);
+            ActionContext ctx = new ActionContext(cursor, loopCounters, variables, lines, dispatchedBranches);
+            ActionResult result = ActionRegistry.execute(interpolated, ctx);
+
+            if (result.type == ActionResult.Type.END) {
+                return ExecOutcome.ended();
+            } else if (result.type == ActionResult.Type.CHAIN) {
+                return ExecOutcome.chained(result.targetScript, result.chainVariables);
+            } else if (result.type == ActionResult.Type.RETURN) {
+                return ExecOutcome.returned(result.returnValue);
+            } else if (result.type == ActionResult.Type.JUMP) {
+                cursor = result.targetLine;
+            } else {
+                cursor++;
+            }
+        }
+
+        return ExecOutcome.normal();
     }
 }

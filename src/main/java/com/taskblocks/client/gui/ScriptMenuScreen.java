@@ -242,10 +242,9 @@ public class ScriptMenuScreen extends Screen {
                     Text.literal("by " + script.author + "  •  v" + script.version),
                     px + PAD + 14, rowY + 21, COL_DARK_GRAY);
 
-                // Keybinds
+                // Keybind
                 ctx.drawTextWithShadow(textRenderer,
-                    Text.literal("▶ " + script.startStopKey
-                        + "   ⏸ " + script.pauseKey + " (soon)"),
+                    Text.literal("▶ " + script.startStopKey),
                     px + PAD + 14, rowY + 33, COL_ACCENT);
             }
 

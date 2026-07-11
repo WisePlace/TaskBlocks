@@ -502,7 +502,8 @@ public class EventListenerManager {
 
                 if (result.type == ActionResult.Type.JUMP
                         || result.type == ActionResult.Type.END
-                        || result.type == ActionResult.Type.CHAIN) {
+                        || result.type == ActionResult.Type.CHAIN
+                        || result.type == ActionResult.Type.RETURN) {
                     ScriptRunner.requestListenerControl(result);
                 }
             } catch (InterruptedException e) {

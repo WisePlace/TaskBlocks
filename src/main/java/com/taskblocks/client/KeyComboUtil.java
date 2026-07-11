@@ -7,9 +7,9 @@ import net.minecraft.client.util.InputUtil;
 
 // ============================================================
 // Shared keybind parsing: supports single keys ("K") and modifier
-// combos ("CTRL+K", "CTRL+ALT+K"). Used by both the start_stop_key/
-// pause_key script triggers and the listen() key() condition, so
-// both understand the same syntax.
+// combos ("CTRL+K", "CTRL+ALT+K"). Used by both the start_stop_key
+// script trigger and the listen() key() condition, so both understand
+// the same syntax.
 //
 // A combo is "down" only while every key in it is held at once.
 // CTRL/ALT/SHIFT match either their left or right physical key.
