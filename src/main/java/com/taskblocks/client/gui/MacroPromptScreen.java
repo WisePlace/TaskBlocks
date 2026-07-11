@@ -42,7 +42,7 @@ public class MacroPromptScreen extends Screen {
         int btnY = py + PANEL_H - 34;
 
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("Yes (coming soon)"),
+            Text.literal("Yes"),
             btn -> this.client.setScreen(new ScriptMenuScreen())
         ).dimensions(px + PAD, btnY, (fieldW - 10) / 2, 20).build());
 
@@ -70,7 +70,7 @@ public class MacroPromptScreen extends Screen {
             Text.literal("Record a macro for \"" + scriptName + "\" now?"),
             px + PAD, py + 40, COL_DARK_GRAY);
         ctx.drawTextWithShadow(textRenderer,
-            Text.literal("Macro Recorder (BETA) — coming soon"),
+            Text.literal("Macro Recorder (BETA)"),
             px + PAD, py + 55, COL_DARK_GRAY);
 
         super.render(ctx, mouseX, mouseY, delta);

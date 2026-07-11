@@ -19,12 +19,21 @@ public class ScriptMenuScreen extends Screen {
 
     private List<ScriptData> scripts;
 
-    private static final int PANEL_W  = 500;
-    private static final int PANEL_H  = 320;
+    private static final int MAX_PANEL_W = 500;
+    private static final int MAX_PANEL_H = 320;
+    private static final int MIN_PANEL_W = 280;
+    private static final int MIN_PANEL_H = 160;
+    private static final int SCREEN_MARGIN = 20;
     private static final int HEADER_H = 36;
     private static final int FOOTER_H = 36;
     private static final int ROW_H    = 56;
     private static final int PAD      = 14;
+
+    // Sized to fit the window in init() — not fixed constants, since a
+    // small game window would otherwise let the fixed-size panel spill
+    // off-screen.
+    private int PANEL_W;
+    private int PANEL_H;
 
     private static final int COL_BG        = 0xFF111827;
     private static final int COL_HEADER    = 0xFF0F172A;
@@ -54,6 +63,10 @@ public class ScriptMenuScreen extends Screen {
     @Override
     protected void init() {
         scripts = ScriptLoader.loadScripts();
+
+        PANEL_W = Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, this.width - SCREEN_MARGIN * 2));
+        PANEL_H = Math.max(MIN_PANEL_H, Math.min(MAX_PANEL_H, this.height - SCREEN_MARGIN * 2));
+
         px = (this.width - PANEL_W) / 2;
         py = (this.height - PANEL_H) / 2;
         listY = py + HEADER_H;
@@ -119,13 +132,19 @@ public class ScriptMenuScreen extends Screen {
 
         // New Script icon button
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("+"),
+            Text.literal("\u2795"),
             btn -> this.client.setScreen(new CreateScriptScreen())
+        ).dimensions(px + PANEL_W - 18 - PAD - 18 - 6 - 18 - 6, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
+
+        // Open Scripts Folder icon button
+        addDrawableChild(ButtonWidget.builder(
+            Text.literal("\uD83D\uDD0D"),
+            btn -> openScriptsFolder()
         ).dimensions(px + PANEL_W - 18 - PAD - 18 - 6, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
 
         // Settings icon button
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("\u2699"),
+            Text.literal("\uD83D\uDEE0"),
             btn -> this.client.setScreen(new SettingsScreen(this))
         ).dimensions(px + PANEL_W - 18 - PAD, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
     }
@@ -146,6 +165,25 @@ public class ScriptMenuScreen extends Screen {
             showStatus("Opened: " + script.fileName, COL_ACCENT);
         } catch (Exception e) {
             showStatus("Could not open file!", COL_RED);
+        }
+    }
+
+    private void openScriptsFolder() {
+        try {
+            File folder = FabricLoader.getInstance()
+                .getConfigDir()
+                .resolve("TaskBlocks")
+                .toFile();
+            if (!folder.exists()) folder.mkdirs();
+            if (Desktop.isDesktopSupported()
+                    && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                Desktop.getDesktop().open(folder);
+            } else {
+                Runtime.getRuntime().exec(new String[]{"explorer.exe", folder.getAbsolutePath()});
+            }
+            showStatus("Opened scripts folder", COL_ACCENT);
+        } catch (Exception e) {
+            showStatus("Could not open folder!", COL_RED);
         }
     }
 
