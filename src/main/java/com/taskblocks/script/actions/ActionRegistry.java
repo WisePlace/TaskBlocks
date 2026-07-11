@@ -22,6 +22,7 @@ public class ActionRegistry {
         VariableActions.register();
         ScriptActions.register();
         FunctionActions.register();
+        DisplayActions.register();
     }
 
     public static void register(ActionHandler handler) {

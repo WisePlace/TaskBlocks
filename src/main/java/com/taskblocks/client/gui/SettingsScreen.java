@@ -2,6 +2,7 @@ package com.taskblocks.client.gui;
 
 import com.taskblocks.client.ScriptOverlay;
 import com.taskblocks.client.TaskBlocksClient;
+import com.taskblocks.script.LookRecorder;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -14,14 +15,17 @@ import net.minecraft.text.Text;
 // ============================================================
 // Settings screen reached from the J menu's Settings button.
 // Holds the overlay visibility toggle (moved here from the main
-// menu) and a rebind control for the J menu's own open keybind
+// menu), a rebind control for the J menu's own open keybind
 // (keyboard only), using the same mechanism vanilla's Controls
-// screen uses: KeyBinding.setBoundKey + updateKeysByCode + persist.
+// screen uses: KeyBinding.setBoundKey + updateKeysByCode + persist,
+// and a trigger for the standalone look-only recorder (copies to
+// clipboard rather than saving into a script), with a cycling
+// button choosing how much its output gets path-simplified.
 // ============================================================
 public class SettingsScreen extends Screen {
 
     private static final int PANEL_W = 320;
-    private static final int PANEL_H = 180;
+    private static final int PANEL_H = 200;
     private static final int PAD     = 14;
 
     private static final int COL_BG      = 0xFF111827;
@@ -63,11 +67,46 @@ public class SettingsScreen extends Screen {
         ).dimensions(px + PAD, py + 70, PANEL_W - PAD * 2, 20).build();
         addDrawableChild(rebindButton);
 
+        // Look detail mode — cycles Detailed -> Medium -> Low
+        addDrawableChild(ButtonWidget.builder(
+            Text.literal("Look Detail: " + modeLabel(LookRecorder.getMode())),
+            btn -> {
+                LookRecorder.setMode(nextMode(LookRecorder.getMode()));
+                btn.setMessage(Text.literal("Look Detail: " + modeLabel(LookRecorder.getMode())));
+            }
+        ).dimensions(px + PAD, py + 100, PANEL_W - PAD * 2, 20).build());
+
+        // Look recorder — records camera movement only and copies
+        // the result to the clipboard
+        addDrawableChild(ButtonWidget.builder(
+            Text.literal("Record Look Movement"),
+            btn -> {
+                LookRecorder.start();
+                this.client.setScreen(null);
+            }
+        ).dimensions(px + PAD, py + 130, PANEL_W - PAD * 2, 20).build());
+
         // Back
         addDrawableChild(ButtonWidget.builder(
             Text.literal("Back"),
             btn -> this.client.setScreen(parent)
         ).dimensions(px + PANEL_W / 2 - 35, py + PANEL_H - 30, 70, 18).build());
+    }
+
+    private String modeLabel(LookRecorder.DetailMode mode) {
+        return switch (mode) {
+            case DETAILED -> "Detailed";
+            case MEDIUM -> "Medium";
+            case LOW -> "Low";
+        };
+    }
+
+    private LookRecorder.DetailMode nextMode(LookRecorder.DetailMode mode) {
+        return switch (mode) {
+            case DETAILED -> LookRecorder.DetailMode.MEDIUM;
+            case MEDIUM -> LookRecorder.DetailMode.LOW;
+            case LOW -> LookRecorder.DetailMode.DETAILED;
+        };
     }
 
     private String keyDisplayName() {

@@ -55,6 +55,7 @@ public class TaskBlocksClient implements ClientModInitializer {
             TaskBlocksNotifier.flushMessages();
             ScriptRunner.tick(client);
             com.taskblocks.script.MacroRecorder.tick(client);
+            com.taskblocks.script.LookRecorder.tick(client);
             if (client.player == null) return;
 
             // Open menu

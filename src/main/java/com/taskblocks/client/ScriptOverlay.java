@@ -1,5 +1,6 @@
 package com.taskblocks.client;
 
+import com.taskblocks.script.LookRecorder;
 import com.taskblocks.script.MacroRecorder;
 import com.taskblocks.script.ScriptRunner;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
@@ -20,11 +21,24 @@ public class ScriptOverlay {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.options.hudHidden) return;
 
-            // Macro recorder countdown/status renders regardless of the
-            // overlay visibility toggle — it's its own distinct indicator,
-            // not the normal script-running display below.
+            // Both recorders' countdown/status, and print(), render
+            // regardless of the overlay visibility toggle — they're their
+            // own distinct indicators, not the normal script-running
+            // display below.
             if (MacroRecorder.isActive()) {
                 renderMacroRecorder(drawContext, client);
+            }
+
+            if (LookRecorder.isActive()) {
+                renderLookRecorder(drawContext, client);
+            }
+
+            String printedText = ScriptDisplay.getText();
+            if (printedText != null) {
+                int baseColor = ScriptDisplay.getColor();
+                int alpha = ScriptDisplay.getAlpha();
+                int fadedColor = (alpha << 24) | (baseColor & 0x00FFFFFF);
+                drawBigCenteredText(drawContext, client, printedText, 6f, fadedColor);
             }
 
             if (!visible) return;
@@ -36,23 +50,11 @@ public class ScriptOverlay {
 
     private static void renderMacroRecorder(DrawContext ctx, MinecraftClient client) {
         int screenW = client.getWindow().getScaledWidth();
-        int screenH = client.getWindow().getScaledHeight();
 
         if (MacroRecorder.isCountingDown()) {
             int seconds = MacroRecorder.getCountdownSecondsRemaining();
             String text = seconds > 0 ? String.valueOf(seconds) : "GO!";
-
-            float scale = 6f;
-            float centerX = screenW / 2f;
-            float centerY = screenH / 2f;
-
-            ctx.getMatrices().pushMatrix();
-            ctx.getMatrices().translate(centerX, centerY);
-            ctx.getMatrices().scale(scale, scale);
-            ctx.getMatrices().translate(-centerX, -centerY);
-            ctx.drawCenteredTextWithShadow(client.textRenderer, text,
-                (int) centerX, (int) (centerY - client.textRenderer.fontHeight / 2f), 0xFFFFD700);
-            ctx.getMatrices().popMatrix();
+            drawBigCenteredText(ctx, client, text, 6f, 0xFFFFD700);
 
         } else if (MacroRecorder.isRecording()) {
             String text = "\u25CF REC \u2014 press " + MacroRecorder.STOP_KEY + " to stop";
@@ -63,6 +65,44 @@ public class ScriptOverlay {
             ctx.fill(x - 6, y - 4, x + textWidth + 6, y + 12, 0xAA000000);
             ctx.drawTextWithShadow(client.textRenderer, Text.literal(text), x, y, 0xFFFF5555);
         }
+    }
+
+    private static void renderLookRecorder(DrawContext ctx, MinecraftClient client) {
+        int screenW = client.getWindow().getScaledWidth();
+
+        if (LookRecorder.isCountingDown()) {
+            int seconds = LookRecorder.getCountdownSecondsRemaining();
+            String text = seconds > 0 ? String.valueOf(seconds) : "GO!";
+            drawBigCenteredText(ctx, client, text, 6f, 0xFF55FFFF);
+
+        } else if (LookRecorder.isRecording()) {
+            String text = "\u25CF REC (look only) \u2014 press " + LookRecorder.STOP_KEY + " to stop, copies to clipboard";
+            int textWidth = client.textRenderer.getWidth(text);
+            int x = (screenW - textWidth) / 2;
+            int y = 20;
+
+            ctx.fill(x - 6, y - 4, x + textWidth + 6, y + 12, 0xAA000000);
+            ctx.drawTextWithShadow(client.textRenderer, Text.literal(text), x, y, 0xFF55FFFF);
+        }
+    }
+
+    // Draws text scaled up and centered on screen — used by both
+    // recorder countdowns and the print() action.
+    private static void drawBigCenteredText(DrawContext ctx, MinecraftClient client,
+            String text, float scale, int color) {
+        int screenW = client.getWindow().getScaledWidth();
+        int screenH = client.getWindow().getScaledHeight();
+
+        float centerX = screenW / 2f;
+        float centerY = screenH / 2f;
+
+        ctx.getMatrices().pushMatrix();
+        ctx.getMatrices().translate(centerX, centerY);
+        ctx.getMatrices().scale(scale, scale);
+        ctx.getMatrices().translate(-centerX, -centerY);
+        ctx.drawCenteredTextWithShadow(client.textRenderer, text,
+            (int) centerX, (int) (centerY - client.textRenderer.fontHeight / 2f), color);
+        ctx.getMatrices().popMatrix();
     }
 
     private static void render(DrawContext ctx, MinecraftClient client) {

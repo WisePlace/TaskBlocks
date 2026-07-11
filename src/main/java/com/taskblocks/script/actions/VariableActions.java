@@ -9,6 +9,8 @@ import net.minecraft.registry.Registries;
 
 public class VariableActions {
 
+    private static final java.util.Random RANDOM = new java.util.Random();
+
     public static void register() {
         ActionRegistry.register(VariableActions::handle);
     }
@@ -43,6 +45,49 @@ public class VariableActions {
             } else {
                 TaskBlocks.LOGGER.error("[TaskBlocks] Could not resolve get(" + source + ")");
                 TaskBlocksNotifier.error("Could not resolve get(" + source + ")");
+            }
+
+            return ActionResult.normal();
+        }
+
+        // ============================================================
+        // Variable assignment: varName=random(min, max)
+        // Whole numbers only, inclusive on both ends. Order doesn't
+        // matter — random(6, 1) works the same as random(1, 6).
+        // Example:
+        //   roll=random(1, 6)
+        // ============================================================
+        if (action.contains("=random(") && action.endsWith(")")) {
+            int eqIdx = action.indexOf("=random(");
+            String varName = action.substring(0, eqIdx).trim();
+            String inner = action.substring(eqIdx + 8, action.length() - 1).trim();
+
+            if (varName.isEmpty()) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] Variable name cannot be empty");
+                TaskBlocksNotifier.error("Variable name cannot be empty");
+                return ActionResult.normal();
+            }
+
+            String[] parts = inner.split(",");
+            if (parts.length != 2) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] random() needs 2 args: random(min, max)");
+                TaskBlocksNotifier.error("random() needs 2 args: random(min, max)");
+                return ActionResult.normal();
+            }
+
+            try {
+                int min = Integer.parseInt(parts[0].trim());
+                int max = Integer.parseInt(parts[1].trim());
+                if (min > max) {
+                    int tmp = min;
+                    min = max;
+                    max = tmp;
+                }
+                int value = min + RANDOM.nextInt(max - min + 1);
+                ctx.variables.put(varName, String.valueOf(value));
+            } catch (NumberFormatException e) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] Invalid random() args: " + inner);
+                TaskBlocksNotifier.error("Invalid random() args: §f" + inner);
             }
 
             return ActionResult.normal();

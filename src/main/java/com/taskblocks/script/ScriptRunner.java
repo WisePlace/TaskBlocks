@@ -194,6 +194,7 @@ public class ScriptRunner {
         ScriptRunner.unlockMousePosition();
         releaseAll();
         EventListenerManager.clear();
+        com.taskblocks.client.ScriptDisplay.clear();
         MinecraftClient mc = MinecraftClient.getInstance();
         mc.execute(() -> {
             if (!mc.mouse.isCursorLocked() && mc.currentScreen == null) {

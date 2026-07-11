@@ -4,6 +4,7 @@ import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.TaskBlocksNotifier;
 import com.taskblocks.script.ScriptRunner;
 
+import net.minecraft.text.Text;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -155,6 +156,19 @@ public class KeyboardActions {
             Thread.sleep(80);
             triggerKey(client, client.options.inventoryKey, false);
             Thread.sleep(30);
+            return ActionResult.normal();
+        }
+        // disconnect — disconnect from current server
+        if (action.equalsIgnoreCase("disconnect")) {
+            client.execute(() -> {
+                if (client.getNetworkHandler() != null) {
+                    client.getNetworkHandler()
+                        .getConnection()
+                        .disconnect(Text.literal("Disconnected by TaskBlocks"));
+                }
+            });
+
+            Thread.sleep(100);
             return ActionResult.normal();
         }
 

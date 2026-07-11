@@ -76,6 +76,10 @@ public class MacroRecorder {
 
     public static void start(String fileName) {
         if (state != State.IDLE) return;
+        if (LookRecorder.isActive()) {
+            TaskBlocksNotifier.warn("Can't record a macro while look recording is active.");
+            return;
+        }
 
         targetFileName = fileName;
         recordedLines.clear();
