@@ -34,6 +34,8 @@ public class ScriptRunner {
     private static volatile Set<Integer> currentDispatchedBranches = null;
     private static volatile int currentCursor = 0;
     private static volatile long tickCounter = 0;
+    private static volatile String pendingChainScript = null;
+    private static volatile Map<String, String> pendingChainVariables = null;
     private static final java.util.concurrent.atomic.AtomicReference<ActionResult> pendingListenerControl =
         new java.util.concurrent.atomic.AtomicReference<>();
 
@@ -220,6 +222,10 @@ public class ScriptRunner {
     // ============================================================
 
     public static void run(ScriptData script, long initialDelayMs) {
+        run(script, initialDelayMs, null);
+    }
+
+    public static void run(ScriptData script, long initialDelayMs, Map<String, String> initialVariables) {
         if (running) stop();
 
         running = true;
@@ -233,7 +239,7 @@ public class ScriptRunner {
             try {
                 Thread.sleep(initialDelayMs);
                 TaskBlocks.LOGGER.info("[TaskBlocks] Running: " + script.name);
-                executeActions(script.actions);
+                executeActions(script.actions, initialVariables);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -265,6 +271,24 @@ public class ScriptRunner {
                 TaskBlocks.LOGGER.info("[TaskBlocks] Finished: " + script.name);
                 TaskBlocksNotifier.info("Finished: " + script.name);
                 TaskBlocksNotifier.setDebugMode(false);
+
+                // Launch a chained script (run_script()) only now that this
+                // thread's own cleanup (running=false, released keys, etc.)
+                // has fully completed — starting it any earlier would race
+                // on the shared 'running' flag with the new script's thread.
+                String nextScript = pendingChainScript;
+                Map<String, String> nextVariables = pendingChainVariables;
+                pendingChainScript = null;
+                pendingChainVariables = null;
+                if (nextScript != null) {
+                    ScriptData target = com.taskblocks.script.actions.ScriptActions.findScript(nextScript);
+                    if (target != null && target.enabled) {
+                        ScriptRunner.run(target, 0, nextVariables);
+                    } else {
+                        TaskBlocks.LOGGER.error("[TaskBlocks] run_script: target no longer available: " + nextScript);
+                        TaskBlocksNotifier.error("run_script: target no longer available: " + nextScript);
+                    }
+                }
             }
         }, "TaskBlocks-Runner");
 
@@ -289,9 +313,10 @@ public class ScriptRunner {
     // Execute actions
     // ============================================================
 
-        private static void executeActions(List<String> actions) throws InterruptedException {
+        private static void executeActions(List<String> actions, Map<String, String> initialVariables) throws InterruptedException {
         Map<Integer, Integer> loopCounters = new java.util.HashMap<>();
-        Map<String, String> variables = new java.util.HashMap<>();
+        Map<String, String> variables = initialVariables != null
+            ? new java.util.HashMap<>(initialVariables) : new java.util.HashMap<>();
         java.util.Set<Integer> dispatchedBranches = new java.util.HashSet<>();
         int cursor = 0;
 
@@ -305,8 +330,8 @@ public class ScriptRunner {
             while (cursor < actions.size() && running) {
                 currentCursor = cursor;
 
-                // A listener fired goto()/end() since the last line — apply it
-                // before executing the next scripted line.
+                // A listener fired goto()/end()/run_script() since the last line —
+                // apply it before executing the next scripted line.
                 ActionResult pending = pendingListenerControl.getAndSet(null);
                 if (pending != null) {
                     if (pending.type == ActionResult.Type.END) {
@@ -315,6 +340,11 @@ public class ScriptRunner {
                     } else if (pending.type == ActionResult.Type.JUMP) {
                         cursor = pending.targetLine;
                         continue;
+                    } else if (pending.type == ActionResult.Type.CHAIN) {
+                        TaskBlocks.LOGGER.info("[TaskBlocks] Script chaining (via listener) to: " + pending.targetScript);
+                        pendingChainScript = pending.targetScript;
+                        pendingChainVariables = pending.chainVariables;
+                        break;
                     }
                 }
 
@@ -331,6 +361,11 @@ public class ScriptRunner {
 
                 if (result.type == ActionResult.Type.END) {
                     TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by 'end' action.");
+                    break;
+                } else if (result.type == ActionResult.Type.CHAIN) {
+                    TaskBlocks.LOGGER.info("[TaskBlocks] Script chaining to: " + result.targetScript);
+                    pendingChainScript = result.targetScript;
+                    pendingChainVariables = result.chainVariables;
                     break;
                 } else if (result.type == ActionResult.Type.JUMP) {
                     cursor = result.targetLine;

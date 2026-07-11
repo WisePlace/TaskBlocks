@@ -8,8 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.lwjgl.glfw.GLFW;
-
 import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.TaskBlocksNotifier;
 import com.taskblocks.script.actions.ActionContext;
@@ -18,15 +16,16 @@ import com.taskblocks.script.actions.ActionResult;
 import com.taskblocks.script.actions.ConditionEvaluator;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.BlockPos;
+
+import org.lwjgl.glfw.GLFW;
 
 // ============================================================
 // Registry + evaluator for listen() event listeners.
@@ -464,15 +463,7 @@ public class EventListenerManager {
     }
 
     private static boolean isKeyPressed(MinecraftClient client, String keyArg) {
-        try {
-            String normalized = keyArg.trim().toLowerCase().replace("_", ".");
-            String translationKey = normalized.startsWith("key.keyboard.")
-                ? normalized : "key.keyboard." + normalized;
-            InputUtil.Key key = InputUtil.fromTranslationKey(translationKey);
-            return InputUtil.isKeyPressed(client.getWindow(), key.getCode());
-        } catch (Exception e) {
-            return false;
-        }
+        return com.taskblocks.client.KeyComboUtil.isComboDown(client, keyArg);
     }
 
     private static boolean isMousePressed(MinecraftClient client, String buttonArg) {
@@ -510,7 +501,8 @@ public class EventListenerManager {
                 ActionResult result = ActionRegistry.execute(listener.action, ctx);
 
                 if (result.type == ActionResult.Type.JUMP
-                        || result.type == ActionResult.Type.END) {
+                        || result.type == ActionResult.Type.END
+                        || result.type == ActionResult.Type.CHAIN) {
                     ScriptRunner.requestListenerControl(result);
                 }
             } catch (InterruptedException e) {

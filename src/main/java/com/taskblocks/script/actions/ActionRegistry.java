@@ -20,6 +20,7 @@ public class ActionRegistry {
         MovementActions.register();
         WorldActions.register();
         VariableActions.register();
+        ScriptActions.register();
     }
 
     public static void register(ActionHandler handler) {

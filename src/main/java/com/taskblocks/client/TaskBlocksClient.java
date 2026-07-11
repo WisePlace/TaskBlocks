@@ -8,7 +8,6 @@ import com.taskblocks.script.ScriptRunner;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
@@ -71,7 +70,7 @@ public class TaskBlocksClient implements ClientModInitializer {
                 if (script.startStopKey == null
                         || script.startStopKey.equalsIgnoreCase("NONE")) continue;
 
-                boolean pressed = isKeyDown(client, script.startStopKey);
+                boolean pressed = KeyComboUtil.isComboDown(client, script.startStopKey);
                 boolean wasPressed = prevKeyState.getOrDefault(script.startStopKey, false);
 
                 if (pressed && !wasPressed) {
@@ -124,18 +123,5 @@ public class TaskBlocksClient implements ClientModInitializer {
         });
 
         TaskBlocks.LOGGER.info("[TaskBlocks] Client initialized.");
-    }
-
-    private static boolean isKeyDown(MinecraftClient client, String keyName) {
-        try {
-            String normalized = keyName.toLowerCase().replace("_", ".");
-            String translationKey = normalized.startsWith("key.keyboard.")
-                ? normalized
-                : "key.keyboard." + normalized;
-            InputUtil.Key key = InputUtil.fromTranslationKey(translationKey);
-            return InputUtil.isKeyPressed(client.getWindow(), key.getCode());
-        } catch (Exception e) {
-            return false;
-        }
     }
 }
