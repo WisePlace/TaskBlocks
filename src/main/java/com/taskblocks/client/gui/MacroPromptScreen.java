@@ -1,16 +1,17 @@
 package com.taskblocks.client.gui;
 
+import com.taskblocks.script.MacroRecorder;
+
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 // ============================================================
-// Shown right after a new script is created, offering to jump into
-// the (future) Macro Recorder for it. Currently a placeholder — the
-// "Yes" button doesn't record anything yet, both options just return
-// to the script menu. Kept as its own screen so wiring in the real
-// recorder later is a one-line change in the "Yes" button's handler.
+// Shown right after a new script is created, offering to record a
+// macro (BETA) for it right away. "Yes" starts the countdown/recorder
+// and closes this screen so gameplay (and the countdown) is visible;
+// "No" just returns to the script menu.
 // ============================================================
 public class MacroPromptScreen extends Screen {
 
@@ -26,11 +27,13 @@ public class MacroPromptScreen extends Screen {
     private static final int COL_OVERLAY   = 0xCC000000;
 
     private final String scriptName;
+    private final String fileName;
     private int px, py;
 
-    public MacroPromptScreen(String scriptName) {
+    public MacroPromptScreen(String scriptName, String fileName) {
         super(Text.literal("Record a Macro?"));
         this.scriptName = scriptName;
+        this.fileName = fileName;
     }
 
     @Override
@@ -43,7 +46,10 @@ public class MacroPromptScreen extends Screen {
 
         addDrawableChild(ButtonWidget.builder(
             Text.literal("Yes"),
-            btn -> this.client.setScreen(new ScriptMenuScreen())
+            btn -> {
+                MacroRecorder.start(fileName);
+                this.client.setScreen(null);
+            }
         ).dimensions(px + PAD, btnY, (fieldW - 10) / 2, 20).build());
 
         addDrawableChild(ButtonWidget.builder(
@@ -70,7 +76,7 @@ public class MacroPromptScreen extends Screen {
             Text.literal("Record a macro for \"" + scriptName + "\" now?"),
             px + PAD, py + 40, COL_DARK_GRAY);
         ctx.drawTextWithShadow(textRenderer,
-            Text.literal("Macro Recorder (BETA)"),
+            Text.literal("Records movement, clicks & keybinds (BETA)"),
             px + PAD, py + 55, COL_DARK_GRAY);
 
         super.render(ctx, mouseX, mouseY, delta);

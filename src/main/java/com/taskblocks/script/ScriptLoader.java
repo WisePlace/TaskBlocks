@@ -177,15 +177,17 @@ public class ScriptLoader {
     // Creates a new .tbs file with a minimal header and an empty
     // actions body. Used by the "New Script" screen. If a file with
     // the generated name already exists, a numeric suffix is appended
-    // rather than overwriting it.
+    // rather than overwriting it. Returns the generated file name on
+    // success (needed to hand off to the macro recorder), or null on
+    // failure.
     // ============================================================
-    public static boolean createScript(String name, String author, boolean debug, String startStopKey) {
+    public static String createScript(String name, String author, boolean debug, String startStopKey) {
         if (!Files.exists(SCRIPTS_DIR)) {
             try {
                 Files.createDirectories(SCRIPTS_DIR);
             } catch (IOException e) {
                 TaskBlocks.LOGGER.error("[TaskBlocks] Could not create scripts directory.", e);
-                return false;
+                return null;
             }
         }
 
@@ -214,9 +216,47 @@ public class ScriptLoader {
 
         try {
             Files.writeString(filePath, content);
-            return true;
+            return fileName;
         } catch (IOException e) {
             TaskBlocks.LOGGER.error("[TaskBlocks] Failed to create script: " + fileName, e);
+            return null;
+        }
+    }
+
+    // ============================================================
+    // Replaces everything after [actions] with the given lines (plus
+    // a closing 'end'). Used by the macro recorder to write what it
+    // captured into the script created just before recording started.
+    // Only intended for a freshly-created, effectively-empty script —
+    // it overwrites the existing actions body rather than appending.
+    // ============================================================
+    public static boolean appendRecordedActions(String fileName, List<String> lines) {
+        Path filePath = SCRIPTS_DIR.resolve(fileName);
+        try {
+            List<String> existing = Files.readAllLines(filePath);
+            List<String> newLines = new ArrayList<>();
+            boolean foundMarker = false;
+
+            for (String line : existing) {
+                newLines.add(line);
+                if (line.trim().equalsIgnoreCase("[actions]")) {
+                    foundMarker = true;
+                    break;
+                }
+            }
+
+            if (!foundMarker) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] appendRecordedActions: no [actions] marker in " + fileName);
+                return false;
+            }
+
+            newLines.addAll(lines);
+            newLines.add("end");
+
+            Files.write(filePath, newLines);
+            return true;
+        } catch (IOException e) {
+            TaskBlocks.LOGGER.error("[TaskBlocks] Failed to save recorded macro to: " + fileName, e);
             return false;
         }
     }

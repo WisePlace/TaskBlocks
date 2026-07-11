@@ -109,14 +109,14 @@ public class CreateScriptScreen extends Screen {
 
         String key = keyField.getText().trim();
 
-        boolean created = ScriptLoader.createScript(name, author, debugEnabled, key);
-        if (!created) {
+        String fileName = ScriptLoader.createScript(name, author, debugEnabled, key);
+        if (fileName == null) {
             errorMessage = "Failed to create script - check the log";
             return;
         }
 
         TaskBlocksClient.reloadScripts();
-        this.client.setScreen(new MacroPromptScreen(name));
+        this.client.setScreen(new MacroPromptScreen(name, fileName));
     }
 
     @Override
