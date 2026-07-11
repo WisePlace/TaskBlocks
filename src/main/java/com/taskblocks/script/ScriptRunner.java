@@ -22,6 +22,30 @@ public class ScriptRunner {
     private static volatile boolean running = false;
     private static volatile String runningScriptName = null;
     private static volatile long scriptStartTime = 0;
+
+    // ============================================================
+    // Shared state exposed to EventListenerManager so a fired listener
+    // can execute an action against the same running script (variables,
+    // loop counters, cursor), and hand flow control (goto/end) back.
+    // ============================================================
+    private static volatile List<String> currentActions = null;
+    private static volatile Map<Integer, Integer> currentLoopCounters = null;
+    private static volatile Map<String, String> currentVariables = null;
+    private static volatile Set<Integer> currentDispatchedBranches = null;
+    private static volatile int currentCursor = 0;
+    private static volatile long tickCounter = 0;
+    private static final java.util.concurrent.atomic.AtomicReference<ActionResult> pendingListenerControl =
+        new java.util.concurrent.atomic.AtomicReference<>();
+
+    public static List<String> getCurrentActions() { return currentActions; }
+    public static Map<Integer, Integer> getCurrentLoopCounters() { return currentLoopCounters; }
+    public static Map<String, String> getCurrentVariables() { return currentVariables; }
+    public static Set<Integer> getCurrentDispatchedBranches() { return currentDispatchedBranches; }
+    public static int getCurrentCursor() { return currentCursor; }
+
+    public static void requestListenerControl(ActionResult result) {
+        pendingListenerControl.set(result);
+    }
     // Tracks keys and mouse buttons that should stay pressed
     private static final Set<String> heldKeys =
         Collections.synchronizedSet(new HashSet<>());
@@ -101,6 +125,9 @@ public class ScriptRunner {
 
         if (!running || client.player == null) return;
 
+        tickCounter++;
+        EventListenerManager.tick(client, tickCounter);
+
         // Re-apply held mouse buttons
         if (heldMouseButtons.contains("left")) {
             client.options.attackKey.setPressed(true);
@@ -157,6 +184,7 @@ public class ScriptRunner {
         scriptStartTime = 0;
         ScriptRunner.unlockMousePosition();
         releaseAll();
+        EventListenerManager.clear();
         MinecraftClient mc = MinecraftClient.getInstance();
         mc.execute(() -> {
             if (!mc.mouse.isCursorLocked() && mc.currentScreen == null) {
@@ -267,26 +295,55 @@ public class ScriptRunner {
         java.util.Set<Integer> dispatchedBranches = new java.util.HashSet<>();
         int cursor = 0;
 
-        while (cursor < actions.size() && running) {
-            String raw = actions.get(cursor).trim();
+        currentActions = actions;
+        currentLoopCounters = loopCounters;
+        currentVariables = variables;
+        currentDispatchedBranches = dispatchedBranches;
+        pendingListenerControl.set(null);
 
-            if (raw.isEmpty() || raw.startsWith("#")) {
-                cursor++;
-                continue;
+        try {
+            while (cursor < actions.size() && running) {
+                currentCursor = cursor;
+
+                // A listener fired goto()/end() since the last line — apply it
+                // before executing the next scripted line.
+                ActionResult pending = pendingListenerControl.getAndSet(null);
+                if (pending != null) {
+                    if (pending.type == ActionResult.Type.END) {
+                        TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by a listener action.");
+                        break;
+                    } else if (pending.type == ActionResult.Type.JUMP) {
+                        cursor = pending.targetLine;
+                        continue;
+                    }
+                }
+
+                String raw = actions.get(cursor).trim();
+
+                if (raw.isEmpty() || raw.startsWith("#")) {
+                    cursor++;
+                    continue;
+                }
+
+                String interpolated = interpolate(raw, variables);
+                ActionContext ctx = new ActionContext(cursor, loopCounters, variables, actions, dispatchedBranches);
+                ActionResult result = ActionRegistry.execute(interpolated, ctx);
+
+                if (result.type == ActionResult.Type.END) {
+                    TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by 'end' action.");
+                    break;
+                } else if (result.type == ActionResult.Type.JUMP) {
+                    cursor = result.targetLine;
+                } else {
+                    cursor++;
+                }
             }
-
-            String interpolated = interpolate(raw, variables);
-            ActionContext ctx = new ActionContext(cursor, loopCounters, variables, actions, dispatchedBranches);
-            ActionResult result = ActionRegistry.execute(interpolated, ctx);
-
-            if (result.type == ActionResult.Type.END) {
-                TaskBlocks.LOGGER.info("[TaskBlocks] Script ended by 'end' action.");
-                break;
-            } else if (result.type == ActionResult.Type.JUMP) {
-                cursor = result.targetLine;
-            } else {
-                cursor++;
-            }
+        } finally {
+            currentActions = null;
+            currentLoopCounters = null;
+            currentVariables = null;
+            currentDispatchedBranches = null;
+            EventListenerManager.clear();
         }
     }
 }

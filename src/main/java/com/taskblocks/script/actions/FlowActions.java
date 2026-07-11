@@ -116,7 +116,7 @@ public class FlowActions {
         // --- if(condition) ---
         if (action.startsWith("if(") && action.endsWith(")")) {
             String condition = action.substring(3, action.length() - 1).trim();
-            boolean result = evaluateCondition(condition, ctx.variables);
+            boolean result = ConditionEvaluator.evaluate(condition, ctx.variables);
             TaskBlocks.LOGGER.info("[TaskBlocks][DEBUG] if(" + condition + ") -> " + result
                 + " | variables=" + ctx.variables);
 
@@ -153,7 +153,7 @@ public class FlowActions {
             }
 
             String condition = action.substring(8, action.length() - 1).trim();
-            boolean result = evaluateCondition(condition, ctx.variables);
+            boolean result = ConditionEvaluator.evaluate(condition, ctx.variables);
             TaskBlocks.LOGGER.info("[TaskBlocks][DEBUG] else if(" + condition + ") -> " + result
                 + " | variables=" + ctx.variables);
 
@@ -219,6 +219,62 @@ public class FlowActions {
             return ActionResult.end();
         }
 
+        // ============================================================
+        // listen(id, condition, action) / listen(id, condition, action, intervalTicks)
+        //
+        // Registers a background watcher checked continuously (every
+        // intervalTicks game ticks, default 1) for the rest of the
+        // script run. Fires 'action' the moment 'condition' transitions
+        // from false to true (edge-triggered), then keeps watching for
+        // the next edge. To fire only once, have the action itself
+        // goto() a line that calls remove_listener(id).
+        // ============================================================
+        if (action.startsWith("listen(") && action.endsWith(")")) {
+            String inner = action.substring(action.indexOf('(') + 1, action.length() - 1);
+            java.util.List<String> parts = splitTopLevelArgs(inner);
+
+            if (parts.size() == 3 || parts.size() == 4) {
+                String id = parts.get(0).trim();
+                String condition = parts.get(1).trim();
+                String listenerAction = parts.get(2).trim();
+                int intervalTicks = 1;
+
+                if (parts.size() == 4) {
+                    try {
+                        intervalTicks = Integer.parseInt(parts.get(3).trim());
+                    } catch (NumberFormatException e) {
+                        TaskBlocks.LOGGER.warn("[TaskBlocks] Invalid listen() interval, defaulting to 1");
+                        TaskBlocksNotifier.warn("Invalid listen() interval, defaulting to 1");
+                    }
+                }
+
+                if (id.isEmpty() || condition.isEmpty() || listenerAction.isEmpty()) {
+                    TaskBlocks.LOGGER.error("[TaskBlocks] listen() needs a non-empty id, condition, and action");
+                    TaskBlocksNotifier.error("listen() needs a non-empty id, condition, and action");
+                } else {
+                    com.taskblocks.script.EventListenerManager.register(id, condition, listenerAction, intervalTicks);
+                    TaskBlocksNotifier.info("Listener registered: §f" + id);
+                }
+            } else {
+                TaskBlocks.LOGGER.error("[TaskBlocks] listen() needs 3 or 4 args: listen(id, condition, action, [intervalTicks])");
+                TaskBlocksNotifier.error("listen() needs 3 or 4 args: listen(id, condition, action, [intervalTicks])");
+            }
+            return ActionResult.normal();
+        }
+
+        // --- remove_listener(id) ---
+        if (action.startsWith("remove_listener(") && action.endsWith(")")) {
+            String id = action.substring(action.indexOf('(') + 1, action.length() - 1).trim();
+            boolean removed = com.taskblocks.script.EventListenerManager.remove(id);
+            if (removed) {
+                TaskBlocksNotifier.info("Listener removed: §f" + id);
+            } else {
+                TaskBlocks.LOGGER.warn("[TaskBlocks] remove_listener: no listener with id " + id);
+                TaskBlocksNotifier.warn("remove_listener: no listener with id §f" + id);
+            }
+            return ActionResult.normal();
+        }
+
         return null;
     }
 
@@ -279,92 +335,25 @@ public class FlowActions {
     }
 
     // ============================================================
-    // Condition evaluation for if() / else if()
-    // Supports: &&, || (left-to-right, no parentheses grouping)
-    // Comparison operators: >=, <=, ==, !=, >, <
-    // Numeric comparison when both sides parse as numbers, otherwise
-    // falls back to string equality/inequality.
+    // Argument splitting that respects nested parentheses, so an
+    // argument that is itself a call — e.g. say(msg, local) as the
+    // action passed into listen(id, condition, action) — doesn't get
+    // split on its own internal comma.
     // ============================================================
-    private static boolean evaluateCondition(String condition, java.util.Map<String, String> variables) {
-        java.util.List<String> clauses = new java.util.ArrayList<>();
-        java.util.List<String> connectors = new java.util.ArrayList<>();
-
-        String remaining = condition;
-        while (true) {
-            int andIdx = remaining.indexOf("&&");
-            int orIdx  = remaining.indexOf("||");
-            int splitIdx;
-            String connector;
-
-            if (andIdx == -1 && orIdx == -1) {
-                clauses.add(remaining.trim());
-                break;
-            } else if (andIdx != -1 && (orIdx == -1 || andIdx < orIdx)) {
-                splitIdx = andIdx;
-                connector = "&&";
-            } else {
-                splitIdx = orIdx;
-                connector = "||";
-            }
-
-            clauses.add(remaining.substring(0, splitIdx).trim());
-            connectors.add(connector);
-            remaining = remaining.substring(splitIdx + 2);
-        }
-
-        boolean result = evaluateSingleCondition(clauses.get(0), variables);
-        for (int i = 0; i < connectors.size(); i++) {
-            boolean next = evaluateSingleCondition(clauses.get(i + 1), variables);
-            if (connectors.get(i).equals("&&")) {
-                result = result && next;
-            } else {
-                result = result || next;
+    private static java.util.List<String> splitTopLevelArgs(String input) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        int depth = 0;
+        int start = 0;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (c == ',' && depth == 0) {
+                parts.add(input.substring(start, i).trim());
+                start = i + 1;
             }
         }
-        return result;
-    }
-
-    private static boolean evaluateSingleCondition(String condition, java.util.Map<String, String> variables) {
-        String[] ops = {">=", "<=", "==", "!=", ">", "<"};
-
-        for (String op : ops) {
-            int idx = condition.indexOf(op);
-            if (idx == -1) continue;
-
-            String left  = condition.substring(0, idx).trim();
-            String right = condition.substring(idx + op.length()).trim();
-
-            String leftVal  = variables.getOrDefault(left, left);
-            String rightVal = variables.getOrDefault(right, right);
-
-            try {
-                double l = Double.parseDouble(leftVal);
-                double r = Double.parseDouble(rightVal);
-                return switch (op) {
-                    case ">=" -> l >= r;
-                    case "<=" -> l <= r;
-                    case "==" -> l == r;
-                    case "!=" -> l != r;
-                    case ">"  -> l > r;
-                    case "<"  -> l < r;
-                    default   -> false;
-                };
-            } catch (NumberFormatException e) {
-                return switch (op) {
-                    case "==" -> leftVal.equals(rightVal);
-                    case "!=" -> !leftVal.equals(rightVal);
-                    default -> {
-                        TaskBlocks.LOGGER.warn("[TaskBlocks] Cannot compare non-numeric values with "
-                            + op + ": " + leftVal + " " + op + " " + rightVal);
-                        TaskBlocksNotifier.warn("Cannot compare text with §f" + op);
-                        yield false;
-                    }
-                };
-            }
-        }
-
-        TaskBlocks.LOGGER.error("[TaskBlocks] Invalid condition: " + condition);
-        TaskBlocksNotifier.error("Invalid condition: §f" + condition);
-        return false;
+        parts.add(input.substring(start).trim());
+        return parts;
     }
 }
