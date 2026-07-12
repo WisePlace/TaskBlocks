@@ -1,5 +1,4 @@
 <div align="center">
-  
 # TaskBlocks
 
 **In-game automation scripting for Minecraft**
