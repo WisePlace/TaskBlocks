@@ -1,4 +1,5 @@
 <div align="center">
+
 # TaskBlocks
 
 **In-game automation scripting for Minecraft**
@@ -6,6 +7,8 @@
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-green?style=flat-square)](https://minecraft.net) [![Fabric](https://img.shields.io/badge/Fabric-0.19.3+-blue?style=flat-square)](https://fabricmc.net)
 
 *Create, manage and run automation scripts directly in Minecraft — no modding knowledge required.*
+
+</div>
 
 ---
 
