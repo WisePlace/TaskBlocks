@@ -75,7 +75,17 @@ Prefer not to write it by hand? Press `J` then **➕** to create a script throug
 
 ## Documentation
 
-Full docs live on the [wiki](https://github.com/WisePlace/TaskBlocks/wiki), including the [Script Format](https://github.com/WisePlace/TaskBlocks/wiki/Script-Format), the full [Actions Overview](https://github.com/WisePlace/TaskBlocks/wiki/Actions-Overview), and the [Menu & Overlay](https://github.com/WisePlace/TaskBlocks/wiki/Menu-and-Overlay) guide.
+Full documentation lives on the [wiki](https://github.com/WisePlace/TaskBlocks/wiki):
+
+| Page | What's there |
+| --- | --- |
+| [Installation](https://github.com/WisePlace/TaskBlocks/wiki/Installation) | Detailed setup steps |
+| [Script Format](https://github.com/WisePlace/TaskBlocks/wiki/Script-Format) | How a `.tbs` file is structured |
+| [Actions Overview](https://github.com/WisePlace/TaskBlocks/wiki/Actions-Overview) | Every action category, at a glance |
+| [Menu & Overlay](https://github.com/WisePlace/TaskBlocks/wiki/Menu-and-Overlay) | Using the in-game interface, Settings, Anti-AFK |
+| [Look Recorder](https://github.com/WisePlace/TaskBlocks/wiki/Look-Recorder) | Recording camera movement only |
+| [Debug Mode](https://github.com/WisePlace/TaskBlocks/wiki/Debug-Mode) | Troubleshooting your scripts |
+| [Slot Reference](https://github.com/WisePlace/TaskBlocks/wiki/Slot-reference) | Inventory slot numbers |
 
 ---
 
