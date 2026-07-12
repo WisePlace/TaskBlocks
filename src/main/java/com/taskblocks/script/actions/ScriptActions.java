@@ -27,6 +27,28 @@ public class ScriptActions {
     }
 
     private static ActionResult handle(String action, ActionContext ctx) {
+        // --- restart — ends the current script and immediately starts
+        // it again from the top. Just a convenience wrapper around
+        // chaining to yourself, since that already works correctly. ---
+        if (action.equalsIgnoreCase("restart")) {
+            String currentName = com.taskblocks.script.ScriptRunner.getRunningScriptName();
+            if (currentName == null) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] restart: no script is currently running");
+                TaskBlocksNotifier.error("restart: no script is currently running");
+                return ActionResult.normal();
+            }
+
+            ScriptData target = findScript(currentName);
+            if (target == null || !target.enabled) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] restart: '" + currentName + "' is no longer available");
+                TaskBlocksNotifier.error("restart: '" + currentName + "' is no longer available");
+                return ActionResult.normal();
+            }
+
+            TaskBlocksNotifier.info("Restarting: §f" + currentName);
+            return ActionResult.chain(currentName, null);
+        }
+
         if (!action.startsWith("run_script(") || !action.endsWith(")")) return null;
 
         String inner = action.substring(action.indexOf('(') + 1, action.length() - 1);

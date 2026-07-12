@@ -8,6 +8,7 @@ import com.taskblocks.script.ScriptRunner;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
@@ -17,6 +18,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+// Fabric client entry point: keybind registration, the main per-tick
+// loop (menu open, script trigger keybinds, notifier flush, recorder/
+// anti-afk ticks), and update checking on world join.
 public class TaskBlocksClient implements ClientModInitializer {
 
     public static KeyBinding openMenuKey;
@@ -50,15 +54,18 @@ public class TaskBlocksClient implements ClientModInitializer {
         reloadScripts();
         ScriptOverlay.register();
 
-        // Main tick — handles menu, keybinds, notifier
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            UpdateChecker.checkOnce();
+        });
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             TaskBlocksNotifier.flushMessages();
             ScriptRunner.tick(client);
             com.taskblocks.script.MacroRecorder.tick(client);
             com.taskblocks.script.LookRecorder.tick(client);
+            com.taskblocks.script.AntiAfk.tick(client);
             if (client.player == null) return;
 
-            // Open menu
             while (openMenuKey.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new ScriptMenuScreen());
@@ -105,7 +112,6 @@ public class TaskBlocksClient implements ClientModInitializer {
             }
         });
 
-        // Force block breaking even when a screen is open
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
             if (!ScriptRunner.isRunning()) return;
             if (client.player == null || client.interactionManager == null) return;
@@ -113,7 +119,6 @@ public class TaskBlocksClient implements ClientModInitializer {
             if (ScriptRunner.isHoldingMouse("left")) {
                 client.options.attackKey.setPressed(true);
                 client.attackCooldown = 0;
-                // Call handleBlockBreaking logic directly without the accessor
                 if (client.crosshairTarget instanceof net.minecraft.util.hit.BlockHitResult hit) {
                     if (!client.world.getBlockState(hit.getBlockPos()).isAir()) {
                         client.interactionManager.updateBlockBreakingProgress(

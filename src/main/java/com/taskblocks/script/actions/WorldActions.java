@@ -38,10 +38,47 @@ public class WorldActions {
 
         // ============================================================
         // block_break — hold left click until targeted block breaks
+        //   (default 30 second timeout)
+        // block_break(timeoutMs) — same, with a custom timeout instead
+        //   of the default 30 seconds — useful when mining through
+        //   unpredictable terrain, so hitting bedrock or another
+        //   unbreakable block doesn't stall the script for the full
+        //   30 seconds every time
+        // varName=block_break / varName=block_break(timeoutMs) — same,
+        //   capturing "true"/"false" into varName depending on whether
+        //   the block actually broke before the timeout, so a script
+        //   can detect and react to an unbreakable block instead of
+        //   blindly walking into it afterward
         // ============================================================
-        if (action.equalsIgnoreCase("block_break")) {
-            BlockPos[] targetPos = new BlockPos[1];
+        if (action.equalsIgnoreCase("block_break")
+                || (action.startsWith("block_break(") && action.endsWith(")"))
+                || action.toLowerCase().contains("=block_break")) {
 
+            String varName = null;
+            String rest = action;
+
+            int eqIdx = action.toLowerCase().indexOf("=block_break");
+            if (eqIdx > 0) {
+                varName = action.substring(0, eqIdx).trim();
+                rest = action.substring(eqIdx + 1);
+            }
+
+            long timeout = 30_000L;
+            if (rest.startsWith("block_break(") && rest.endsWith(")")) {
+                String inner = rest.substring(12, rest.length() - 1).trim();
+                if (!inner.isEmpty()) {
+                    try {
+                        timeout = Long.parseLong(inner);
+                    } catch (NumberFormatException e) {
+                        TaskBlocks.LOGGER.error("[TaskBlocks] Invalid block_break() timeout: " + inner);
+                        TaskBlocksNotifier.error("Invalid block_break() timeout: §f" + inner);
+                    }
+                }
+            } else if (!rest.equalsIgnoreCase("block_break")) {
+                return null;
+            }
+
+            BlockPos[] targetPos = new BlockPos[1];
             client.execute(() -> {
                 if (client.crosshairTarget instanceof BlockHitResult hit) {
                     targetPos[0] = hit.getBlockPos();
@@ -52,13 +89,14 @@ public class WorldActions {
             if (targetPos[0] == null) {
                 TaskBlocks.LOGGER.warn("[TaskBlocks] block_break: not targeting a block");
                 TaskBlocksNotifier.warn("block_break: not targeting a block");
+                if (varName != null) ctx.variables.put(varName, "false");
                 return ActionResult.normal();
             }
 
             client.execute(() -> client.options.attackKey.setPressed(true));
 
             long startTime = System.currentTimeMillis();
-            long timeout   = 30_000L;
+            boolean brokeSuccessfully = false;
 
             while (System.currentTimeMillis() - startTime < timeout) {
                 Thread.sleep(50);
@@ -70,11 +108,24 @@ public class WorldActions {
                     }
                 });
                 Thread.sleep(20);
-                if (broken[0]) break;
+                if (broken[0]) {
+                    brokeSuccessfully = true;
+                    break;
+                }
             }
 
             client.execute(() -> client.options.attackKey.setPressed(false));
             Thread.sleep(50);
+
+            if (!brokeSuccessfully) {
+                TaskBlocks.LOGGER.warn("[TaskBlocks] block_break: timed out before the block broke");
+                TaskBlocksNotifier.warn("block_break: timed out before the block broke");
+            }
+
+            if (varName != null) {
+                ctx.variables.put(varName, String.valueOf(brokeSuccessfully));
+            }
+
             return ActionResult.normal();
         }
 

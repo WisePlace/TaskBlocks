@@ -4,8 +4,13 @@ import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.TaskBlocksNotifier;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.util.Identifier;
 
 public class VariableActions {
 
@@ -19,13 +24,6 @@ public class VariableActions {
             throws InterruptedException {
         MinecraftClient client = MinecraftClient.getInstance();
 
-        // ============================================================
-        // Variable assignment: varName=get(source)
-        // Examples:
-        //   var1=get(item_id(9))
-        //   myHealth=get(health)
-        //   pos=get(position)
-        // ============================================================
         if (action.contains("=get(") && action.endsWith(")")) {
             int eqIdx = action.indexOf("=get(");
             String varName = action.substring(0, eqIdx).trim();
@@ -41,7 +39,6 @@ public class VariableActions {
 
             if (value != null) {
                 ctx.variables.put(varName, value);
-                TaskBlocks.LOGGER.info("[TaskBlocks] VAR SET: " + varName + " = " + value + " | map size: " + ctx.variables.size());
             } else {
                 TaskBlocks.LOGGER.error("[TaskBlocks] Could not resolve get(" + source + ")");
                 TaskBlocksNotifier.error("Could not resolve get(" + source + ")");
@@ -50,13 +47,6 @@ public class VariableActions {
             return ActionResult.normal();
         }
 
-        // ============================================================
-        // Variable assignment: varName=random(min, max)
-        // Whole numbers only, inclusive on both ends. Order doesn't
-        // matter — random(6, 1) works the same as random(1, 6).
-        // Example:
-        //   roll=random(1, 6)
-        // ============================================================
         if (action.contains("=random(") && action.endsWith(")")) {
             int eqIdx = action.indexOf("=random(");
             String varName = action.substring(0, eqIdx).trim();
@@ -96,14 +86,10 @@ public class VariableActions {
         return null;
     }
 
-    // ============================================================
-    // Resolves a get() source to a string value
-    // ============================================================
     private static String resolveGet(MinecraftClient client, String source)
             throws InterruptedException {
         String[] result = {null};
 
-        // --- item_id(slot) — registry ID of item in slot ---
         if (source.startsWith("item_id(") && source.endsWith(")")) {
             int slot = parseSlot(source, "item_id(");
             if (slot < 0) return null;
@@ -121,7 +107,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- item_count(slot) — stack count in slot ---
         if (source.startsWith("item_count(") && source.endsWith(")")) {
             int slot = parseSlot(source, "item_count(");
             if (slot < 0) return null;
@@ -135,7 +120,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- item_durability(slot) — remaining durability in slot ---
         if (source.startsWith("item_durability(") && source.endsWith(")")) {
             int slot = parseSlot(source, "item_durability(");
             if (slot < 0) return null;
@@ -154,7 +138,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- item_max_durability(slot) — max durability in slot ---
         if (source.startsWith("item_max_durability(") && source.endsWith(")")) {
             int slot = parseSlot(source, "item_max_durability(");
             if (slot < 0) return null;
@@ -172,7 +155,64 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- health — current player health ---
+        if (source.startsWith("enchant(") && source.endsWith(")")) {
+            String inner = source.substring(8, source.length() - 1).trim();
+            String[] parts = inner.split(",");
+            String enchantName = parts[0].trim();
+            Integer slot = null;
+            if (parts.length >= 2) {
+                try {
+                    slot = Integer.parseInt(parts[1].trim());
+                } catch (NumberFormatException e) {
+                    TaskBlocks.LOGGER.error("[TaskBlocks] Invalid enchant() slot: " + parts[1]);
+                    TaskBlocksNotifier.error("Invalid enchant() slot: §f" + parts[1]);
+                    return null;
+                }
+            }
+
+            Integer finalSlot = slot;
+            client.execute(() -> {
+                if (client.player == null || client.world == null) return;
+                ItemStack stack = finalSlot != null
+                    ? client.player.getInventory().getStack(finalSlot)
+                    : client.player.getMainHandStack();
+                if (stack.isEmpty()) {
+                    result[0] = "0";
+                    return;
+                }
+                Identifier id = enchantName.contains(":")
+                    ? Identifier.of(enchantName)
+                    : Identifier.of("minecraft", enchantName);
+                java.util.Optional<net.minecraft.registry.Registry<Enchantment>> registryOpt =
+                    client.world.getRegistryManager().getOptional(RegistryKeys.ENCHANTMENT);
+                if (registryOpt.isEmpty()) {
+                    result[0] = "0";
+                    return;
+                }
+                java.util.Optional<RegistryEntry.Reference<Enchantment>> entry =
+                    registryOpt.get().getEntry(id);
+                if (entry.isEmpty()) {
+                    result[0] = "0";
+                    return;
+                }
+                result[0] = String.valueOf(EnchantmentHelper.getLevel(entry.get(), stack));
+            });
+            Thread.sleep(30);
+            return result[0];
+        }
+
+        if (source.equalsIgnoreCase("speed")) {
+            client.execute(() -> {
+                if (client.player != null) {
+                    net.minecraft.util.math.Vec3d velocity = client.player.getVelocity();
+                    double speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) * 20.0;
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f", speed);
+                }
+            });
+            Thread.sleep(30);
+            return result[0];
+        }
+
         if (source.equalsIgnoreCase("health")) {
             client.execute(() -> {
                 if (client.player != null)
@@ -182,7 +222,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- max_health — player max health ---
         if (source.equalsIgnoreCase("max_health")) {
             client.execute(() -> {
                 if (client.player != null)
@@ -192,7 +231,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- hunger — current food level ---
         if (source.equalsIgnoreCase("hunger")) {
             client.execute(() -> {
                 if (client.player != null)
@@ -202,7 +240,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- saturation — current food saturation ---
         if (source.equalsIgnoreCase("saturation")) {
             client.execute(() -> {
                 if (client.player != null)
@@ -213,25 +250,23 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- position — current X Y Z as "x,y,z" ---
         if (source.equalsIgnoreCase("position")) {
             client.execute(() -> {
                 if (client.player != null) {
                     double x = client.player.getX();
                     double y = client.player.getY();
                     double z = client.player.getZ();
-                    result[0] = String.format("%.2f,%.2f,%.2f", x, y, z);
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f,%.2f,%.2f", x, y, z);
                 }
             });
             Thread.sleep(30);
             return result[0];
         }
 
-        // --- pos_x / pos_y / pos_z — individual coordinates ---
         if (source.equalsIgnoreCase("pos_x")) {
             client.execute(() -> {
                 if (client.player != null)
-                    result[0] = String.format("%.2f", client.player.getX());
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f", client.player.getX());
             });
             Thread.sleep(30);
             return result[0];
@@ -240,7 +275,7 @@ public class VariableActions {
         if (source.equalsIgnoreCase("pos_y")) {
             client.execute(() -> {
                 if (client.player != null)
-                    result[0] = String.format("%.2f", client.player.getY());
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f", client.player.getY());
             });
             Thread.sleep(30);
             return result[0];
@@ -249,33 +284,34 @@ public class VariableActions {
         if (source.equalsIgnoreCase("pos_z")) {
             client.execute(() -> {
                 if (client.player != null)
-                    result[0] = String.format("%.2f", client.player.getZ());
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f", client.player.getZ());
             });
             Thread.sleep(30);
             return result[0];
         }
 
-        // --- look_yaw — current yaw (horizontal angle) ---
         if (source.equalsIgnoreCase("look_yaw")) {
             client.execute(() -> {
-                if (client.player != null)
-                    result[0] = String.format("%.2f", client.player.getYaw());
+                if (client.player != null) {
+                    float yaw = client.player.getYaw() % 360f;
+                    if (yaw > 180f) yaw -= 360f;
+                    if (yaw < -180f) yaw += 360f;
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f", yaw);
+                }
             });
             Thread.sleep(30);
             return result[0];
         }
 
-        // --- look_pitch — current pitch (vertical angle) ---
         if (source.equalsIgnoreCase("look_pitch")) {
             client.execute(() -> {
                 if (client.player != null)
-                    result[0] = String.format("%.2f", client.player.getPitch());
+                    result[0] = String.format(java.util.Locale.ROOT, "%.2f", client.player.getPitch());
             });
             Thread.sleep(30);
             return result[0];
         }
 
-        // --- selected_slot — current hotbar slot (1-based) ---
         if (source.equalsIgnoreCase("selected_slot")) {
             client.execute(() -> {
                 if (client.player != null)
@@ -286,7 +322,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- dimension — current dimension ID ---
         if (source.equalsIgnoreCase("dimension")) {
             client.execute(() -> {
                 if (client.player != null && client.world != null)
@@ -296,7 +331,6 @@ public class VariableActions {
             return result[0];
         }
 
-        // --- game_time — current world time in ticks ---
         if (source.equalsIgnoreCase("game_time")) {
             client.execute(() -> {
                 if (client.world != null)

@@ -12,6 +12,17 @@ public class FlowActions {
     private static ActionResult handle(String action, ActionContext ctx)
             throws InterruptedException {
 
+        // --- pause — infinite pause, only ends via stop, a listener's
+        // end/goto/return, or run_script(). Useful for a script that
+        // exists purely to run listeners in the background and should
+        // otherwise just sit still. Thread.sleep(Long.MAX_VALUE) is
+        // effectively "forever" for any practical purpose, and gets
+        // interrupted the exact same way any other pause() does. ---
+        if (action.equalsIgnoreCase("pause")) {
+            Thread.sleep(Long.MAX_VALUE);
+            return ActionResult.normal();
+        }
+
         // --- pause(amount) or pause(amount, unit) ---
         if (action.startsWith("pause(") && action.endsWith(")")) {
             String inner = action.substring(6, action.length() - 1).trim();
@@ -231,7 +242,7 @@ public class FlowActions {
         // ============================================================
         if (action.startsWith("listen(") && action.endsWith(")")) {
             String inner = action.substring(action.indexOf('(') + 1, action.length() - 1);
-            java.util.List<String> parts = splitTopLevelArgs(inner);
+            java.util.List<String> parts = ArgSplitter.split(inner);
 
             if (parts.size() == 3 || parts.size() == 4) {
                 String id = parts.get(0).trim();
@@ -334,26 +345,4 @@ public class FlowActions {
         return -1;
     }
 
-    // ============================================================
-    // Argument splitting that respects nested parentheses, so an
-    // argument that is itself a call — e.g. say(msg, local) as the
-    // action passed into listen(id, condition, action) — doesn't get
-    // split on its own internal comma.
-    // ============================================================
-    private static java.util.List<String> splitTopLevelArgs(String input) {
-        java.util.List<String> parts = new java.util.ArrayList<>();
-        int depth = 0;
-        int start = 0;
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (c == ',' && depth == 0) {
-                parts.add(input.substring(start, i).trim());
-                start = i + 1;
-            }
-        }
-        parts.add(input.substring(start).trim());
-        return parts;
-    }
 }

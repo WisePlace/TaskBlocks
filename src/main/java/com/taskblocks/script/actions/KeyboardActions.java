@@ -4,10 +4,10 @@ import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.TaskBlocksNotifier;
 import com.taskblocks.script.ScriptRunner;
 
-import net.minecraft.text.Text;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.text.Text;
 
 public class KeyboardActions {
 
@@ -159,17 +159,32 @@ public class KeyboardActions {
             return ActionResult.normal();
         }
         // disconnect — disconnect from current server
-        if (action.equalsIgnoreCase("disconnect")) {
+        if (action.equalsIgnoreCase("disconnect")
+                || (action.startsWith("disconnect(") && action.endsWith(")"))) {
+
+            String reason = "Disconnected by TaskBlocks";
+            if (action.startsWith("disconnect(")) {
+                String inner = action.substring(11, action.length() - 1).trim();
+                if (!inner.isEmpty()) {
+                    if ((inner.startsWith("\"") && inner.endsWith("\""))
+                            || (inner.startsWith("'") && inner.endsWith("'"))) {
+                        inner = inner.substring(1, inner.length() - 1);
+                    }
+                    reason = inner;
+                }
+            }
+
+            final String finalReason = reason;
             client.execute(() -> {
                 if (client.getNetworkHandler() != null) {
                     client.getNetworkHandler()
                         .getConnection()
-                        .disconnect(Text.literal("Disconnected by TaskBlocks"));
+                        .disconnect(Text.literal(finalReason));
                 }
             });
 
             Thread.sleep(100);
-            return ActionResult.normal();
+            return ActionResult.end();
         }
 
         // ============================================================

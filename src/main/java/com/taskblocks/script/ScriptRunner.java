@@ -54,6 +54,9 @@ public class ScriptRunner {
 
     public static void requestListenerControl(ActionResult result) {
         pendingListenerControl.set(result);
+        if (result.type == ActionResult.Type.END && runnerThread != null) {
+            runnerThread.interrupt();
+        }
     }
     // Tracks keys and mouse buttons that should stay pressed
     private static final Set<String> heldKeys =
