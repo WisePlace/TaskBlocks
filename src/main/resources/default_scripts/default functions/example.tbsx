@@ -1,0 +1,6 @@
+version=1.0
+owner=TaskBlocks
+
+def greet(name):
+    say(Hello, {name}! This came from example.tbsx, local)
+enddef

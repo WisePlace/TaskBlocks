@@ -63,7 +63,7 @@ public class UpdateChecker {
             TaskBlocks.LOGGER.info("[TaskBlocks] Update check: current=" + currentVersion
                 + ", latest=" + latestVersion);
 
-            if (isNewer(latestVersion, currentVersion)) {
+            if (VersionUtil.isNewer(latestVersion, currentVersion)) {
                 notifyUpdate(currentVersion, latestVersion);
             }
         } catch (Exception e) {
@@ -103,27 +103,5 @@ public class UpdateChecker {
             .getModContainer(MOD_ID)
             .map(container -> container.getMetadata().getVersion().getFriendlyString())
             .orElse("0.0.0");
-    }
-
-    private static boolean isNewer(String latest, String current) {
-        String[] latestParts = latest.split("\\.");
-        String[] currentParts = current.split("\\.");
-        int length = Math.max(latestParts.length, currentParts.length);
-
-        for (int i = 0; i < length; i++) {
-            int latestNum = parsePart(latestParts, i);
-            int currentNum = parsePart(currentParts, i);
-            if (latestNum != currentNum) return latestNum > currentNum;
-        }
-        return false;
-    }
-
-    private static int parsePart(String[] parts, int index) {
-        if (index >= parts.length) return 0;
-        try {
-            return Integer.parseInt(parts[index].replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 }

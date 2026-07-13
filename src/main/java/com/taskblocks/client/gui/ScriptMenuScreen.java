@@ -15,6 +15,8 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
+// The J menu: script list, run/stop, favorite toggling, and the
+// footer's New Script / Open Folder / Settings shortcuts.
 public class ScriptMenuScreen extends Screen {
 
     private List<ScriptData> scripts;
@@ -29,9 +31,6 @@ public class ScriptMenuScreen extends Screen {
     private static final int ROW_H    = 56;
     private static final int PAD      = 14;
 
-    // Sized to fit the window in init() — not fixed constants, since a
-    // small game window would otherwise let the fixed-size panel spill
-    // off-screen.
     private int PANEL_W;
     private int PANEL_H;
 
@@ -84,13 +83,33 @@ public class ScriptMenuScreen extends Screen {
             ScriptData script = scripts.get(idx);
             int rowY = listY + i * ROW_H;
 
-            // Open File button
+            addDrawableChild(ButtonWidget.builder(
+                Text.literal(script.favorite ? "\u2605" : "\u2606"),
+                btn -> {
+                    script.favorite = !script.favorite;
+                    ScriptLoader.saveScript(script);
+                    scripts = ScriptLoader.loadScripts();
+                    TaskBlocksClient.reloadScripts();
+                    rebuildButtons();
+                }
+            ).dimensions(px + PANEL_W - PAD - 80 - 26, rowY + 16, 20, 20).build());
+
+            addDrawableChild(ButtonWidget.builder(
+                Text.literal(script.enabled ? "\u2714" : "\u2716"),
+                btn -> {
+                    script.enabled = !script.enabled;
+                    ScriptLoader.saveScript(script);
+                    scripts = ScriptLoader.loadScripts();
+                    TaskBlocksClient.reloadScripts();
+                    rebuildButtons();
+                }
+            ).dimensions(px + PANEL_W - PAD - 80 - 52, rowY + 16, 20, 20).build());
+
             addDrawableChild(ButtonWidget.builder(
                 Text.literal("Open File"),
                 btn -> openScriptFile(script)
             ).dimensions(px + PANEL_W - PAD - 80, rowY + 6, 80, 18).build());
 
-            // Run / Stop button
             boolean isThisRunning = ScriptRunner.isRunning()
                 && script.name.equals(ScriptRunner.getRunningScriptName());
 
@@ -111,7 +130,6 @@ public class ScriptMenuScreen extends Screen {
             ).dimensions(px + PANEL_W - PAD - 80, rowY + 28, 80, 18).build());
         }
 
-        // Reload button
         addDrawableChild(ButtonWidget.builder(
             Text.literal("Reload"),
             btn -> {
@@ -124,25 +142,21 @@ public class ScriptMenuScreen extends Screen {
             }
         ).dimensions(px + PAD, py + PANEL_H - FOOTER_H + 9, 70, 18).build());
 
-        // Close button
         addDrawableChild(ButtonWidget.builder(
             Text.literal("Close"),
             btn -> this.close()
         ).dimensions(px + PANEL_W / 2 - 35, py + PANEL_H - FOOTER_H + 9, 70, 18).build());
 
-        // New Script icon button
         addDrawableChild(ButtonWidget.builder(
             Text.literal("\u2795"),
             btn -> this.client.setScreen(new CreateScriptScreen())
         ).dimensions(px + PANEL_W - 18 - PAD - 18 - 6 - 18 - 6, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
 
-        // Open Scripts Folder icon button
         addDrawableChild(ButtonWidget.builder(
-            Text.literal("\uD83D\uDD0D"),
+            Text.literal("\uD83D\uDDC0").styled(style -> style.withBold(true)),
             btn -> openScriptsFolder()
         ).dimensions(px + PANEL_W - 18 - PAD - 18 - 6, py + PANEL_H - FOOTER_H + 9, 18, 18).build());
 
-        // Settings icon button
         addDrawableChild(ButtonWidget.builder(
             Text.literal("\uD83D\uDEE0"),
             btn -> this.client.setScreen(new SettingsScreen(this))
@@ -205,12 +219,10 @@ public class ScriptMenuScreen extends Screen {
     public void render(DrawContext ctx, int mouseX, int mouseY, float deltaTicks) {
         ctx.fill(0, 0, this.width, this.height, COL_OVERLAY);
 
-        // Panel
         ctx.fill(px, py, px + PANEL_W, py + PANEL_H, COL_BG);
         ctx.fill(px, py, px + PANEL_W, py + HEADER_H, COL_HEADER);
         ctx.fill(px, py + PANEL_H - FOOTER_H, px + PANEL_W, py + PANEL_H, COL_FOOTER);
 
-        // Border
         ctx.fill(px,             py,               px + PANEL_W, py + 1,           COL_BORDER);
         ctx.fill(px,             py + PANEL_H - 1, px + PANEL_W, py + PANEL_H,     COL_BORDER);
         ctx.fill(px,             py,               px + 1,       py + PANEL_H,     COL_BORDER);
@@ -219,19 +231,16 @@ public class ScriptMenuScreen extends Screen {
         ctx.fill(px, py + PANEL_H - FOOTER_H,
                  px + PANEL_W, py + PANEL_H - FOOTER_H + 1, COL_ROW_SEP);
 
-        // Title
         ctx.drawTextWithShadow(textRenderer,
             Text.literal("TaskBlocks"),
             px + PAD, py + (HEADER_H - 8) / 2, COL_ACCENT);
 
-        // Status message in header (right side, replaces count when active)
         if (statusMessage != null) {
             ctx.drawTextWithShadow(textRenderer,
                 Text.literal(statusMessage),
                 px + PANEL_W - PAD - textRenderer.getWidth(statusMessage),
                 py + (HEADER_H - 8) / 2, statusColor);
         } else {
-            // Running indicator
             if (ScriptRunner.isRunning()) {
                 String running = "▶ " + ScriptRunner.getRunningScriptName();
                 ctx.drawTextWithShadow(textRenderer,
@@ -247,7 +256,6 @@ public class ScriptMenuScreen extends Screen {
             }
         }
 
-        // Script rows
         if (scripts.isEmpty()) {
             String msg = "No scripts found in config/TaskBlocks/";
             ctx.drawTextWithShadow(textRenderer, Text.literal(msg),
@@ -267,27 +275,23 @@ public class ScriptMenuScreen extends Screen {
                 ctx.fill(px + 1, rowY + ROW_H - 1,
                          px + PANEL_W - 1, rowY + ROW_H, COL_ROW_SEP);
 
-                // Status dot — yellow if running, green if enabled, red if disabled
                 int dotColor = isRunning ? COL_YELLOW
                     : script.enabled ? COL_GREEN : COL_RED;
                 ctx.fill(px + PAD, rowY + 13, px + PAD + 7, rowY + 20, dotColor);
 
-                // Script name
-                ctx.drawTextWithShadow(textRenderer, Text.literal(script.name),
-                    px + PAD + 14, rowY + 9, COL_WHITE);
+                String displayName = (script.favorite ? "\u2605 " : "") + script.name;
+                ctx.drawTextWithShadow(textRenderer, Text.literal(displayName),
+                    px + PAD + 14, rowY + 9, script.favorite ? COL_YELLOW : COL_WHITE);
 
-                // Author + version
                 ctx.drawTextWithShadow(textRenderer,
                     Text.literal("by " + script.author + "  •  v" + script.version),
                     px + PAD + 14, rowY + 21, COL_DARK_GRAY);
 
-                // Keybind
                 ctx.drawTextWithShadow(textRenderer,
                     Text.literal("▶ " + script.startStopKey),
                     px + PAD + 14, rowY + 33, COL_ACCENT);
             }
 
-            // Scrollbar
             int visibleRows2 = listH / ROW_H;
             if (scripts.size() > visibleRows2) {
                 int sbX = px + PANEL_W - 4;

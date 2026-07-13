@@ -11,13 +11,25 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.taskblocks.TaskBlocks;
+import com.taskblocks.client.TaskBlocksSettings;
+import com.taskblocks.script.actions.ArgSplitter;
 
 import net.fabricmc.loader.api.FabricLoader;
 
+// Loads, parses, creates, and saves .tbs script files. Scans the whole
+// config/TaskBlocks folder recursively, so scripts can be organized
+// into subfolders. Handles the header, [functions] with def/enddef,
+// [actions], import= for pulling in .tbsx function files from anywhere
+// under config/TaskBlocks, and desugars inline
+// listen(id, condition) { ... } blocks into an auto-generated hidden
+// function plus a call() action, so the rest of the mod never needs
+// to know the block syntax exists.
 public class ScriptLoader {
 
     private static final Path SCRIPTS_DIR = FabricLoader.getInstance()
         .getConfigDir().resolve("TaskBlocks");
+
+    private static final String DEFAULT_FOLDER_NAME = "default";
 
     private static final Pattern DEF_PATTERN =
         Pattern.compile("^def\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*:$", Pattern.CASE_INSENSITIVE);
@@ -25,7 +37,6 @@ public class ScriptLoader {
     public static List<ScriptData> loadScripts() {
         List<ScriptData> scripts = new ArrayList<>();
 
-        // Create the folder if it doesn't exist yet
         if (!Files.exists(SCRIPTS_DIR)) {
             try {
                 Files.createDirectories(SCRIPTS_DIR);
@@ -35,11 +46,18 @@ public class ScriptLoader {
             }
         }
 
-        // Find all .tbs files
-        try (var stream = Files.list(SCRIPTS_DIR)) {
+        boolean showDefault = TaskBlocksSettings.isShowDefaultScripts();
+
+        try (var stream = Files.walk(SCRIPTS_DIR)) {
             stream.filter(p -> p.toString().endsWith(".tbs")).forEach(path -> {
+                Path relative = SCRIPTS_DIR.relativize(path);
+                boolean isDefault = relative.getNameCount() > 1
+                    && relative.getName(0).toString().equalsIgnoreCase(DEFAULT_FOLDER_NAME);
+
+                if (isDefault && !showDefault) return;
+
                 try {
-                    ScriptData script = parseScript(path);
+                    ScriptData script = parseScript(path, relative);
                     if (script != null) scripts.add(script);
                 } catch (Exception e) {
                     TaskBlocks.LOGGER.error("[TaskBlocks] Failed to load script: " + path.getFileName(), e);
@@ -49,11 +67,12 @@ public class ScriptLoader {
             TaskBlocks.LOGGER.error("[TaskBlocks] Failed to read scripts directory.", e);
         }
 
+        scripts.sort((a, b) -> Boolean.compare(b.favorite, a.favorite));
         return scripts;
     }
 
-    private static ScriptData parseScript(Path path) throws IOException {
-        List<String> lines = Files.readAllLines(path);
+    private static ScriptData parseScript(Path path, Path relativePath) throws IOException {
+        List<String> rawLines = Files.readAllLines(path);
 
         String name = "Unnamed";
         String version = "1.0";
@@ -61,18 +80,24 @@ public class ScriptLoader {
         String startStopKey = "NONE";
         boolean enabled = false;
         boolean debug = false;
+        boolean favorite = false;
         List<String> actions = new ArrayList<>();
         Map<String, FunctionDef> functions = new LinkedHashMap<>();
+        List<String> importFiles = new ArrayList<>();
         boolean inActions = false;
         boolean inFunctions = false;
 
-        // State for the function currently being parsed, if any
         String currentFuncName = null;
         List<String> currentFuncParams = null;
         List<String> currentFuncBody = null;
 
-        for (String raw : lines) {
-            String line = raw.trim();
+        int[] listenBlockCounter = {0};
+
+        int i = 0;
+        while (i < rawLines.size()) {
+            String line = rawLines.get(i).trim();
+            i++;
+
             if (line.isEmpty() || line.startsWith("#")) continue;
 
             if (line.equalsIgnoreCase("[functions]")) {
@@ -126,7 +151,13 @@ public class ScriptLoader {
                         currentFuncBody = null;
                     }
                 } else if (currentFuncName != null) {
-                    currentFuncBody.add(line);
+                    if (isListenBlockStart(line)) {
+                        listenBlockCounter[0]++;
+                        String blockName = "__listen_block_" + listenBlockCounter[0];
+                        i = consumeListenBlock(rawLines, i, line, blockName, functions, currentFuncBody, path);
+                    } else {
+                        currentFuncBody.add(line);
+                    }
                 } else {
                     TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
                         + ": line inside [functions] outside any def block: " + line);
@@ -135,7 +166,13 @@ public class ScriptLoader {
             }
 
             if (inActions) {
-                actions.add(line);
+                if (isListenBlockStart(line)) {
+                    listenBlockCounter[0]++;
+                    String blockName = "__listen_block_" + listenBlockCounter[0];
+                    i = consumeListenBlock(rawLines, i, line, blockName, functions, actions, path);
+                } else {
+                    actions.add(line);
+                }
             } else {
                 if (line.startsWith("name=")) name = line.substring(5).trim();
                 else if (line.startsWith("version=")) version = line.substring(8).trim();
@@ -143,6 +180,15 @@ public class ScriptLoader {
                 else if (line.startsWith("start_stop_key=")) startStopKey = line.substring(15).trim();
                 else if (line.startsWith("enabled=")) enabled = line.substring(8).trim().equalsIgnoreCase("true");
                 else if (line.startsWith("debug=")) debug = line.substring(6).trim().equalsIgnoreCase("true");
+                else if (line.startsWith("favorite=")) favorite = line.substring(9).trim().equalsIgnoreCase("true");
+                else if (line.startsWith("import=")) {
+                    String importFile = line.substring(7).trim();
+                    if (!importFile.isEmpty()) {
+                        importFile = importFile.replace('\\', '/');
+                        if (!importFile.toLowerCase().endsWith(".tbsx")) importFile += ".tbsx";
+                        importFiles.add(importFile);
+                    }
+                }
             }
         }
 
@@ -151,36 +197,196 @@ public class ScriptLoader {
                 + ": function '" + currentFuncName + "' is missing 'enddef'");
         }
 
-        return new ScriptData(name, path.getFileName().toString(), version, author,
-            startStopKey, enabled, debug, actions, functions);
+        for (String importFile : importFiles) {
+            Path importPath = SCRIPTS_DIR.resolve(importFile);
+            if (!Files.exists(importPath)) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] " + path.getFileName()
+                    + ": import file not found: " + importFile);
+                continue;
+            }
+            try {
+                Map<String, FunctionDef> imported = parseFunctionFile(importPath);
+                for (Map.Entry<String, FunctionDef> entry : imported.entrySet()) {
+                    functions.putIfAbsent(entry.getKey(), entry.getValue());
+                }
+            } catch (IOException e) {
+                TaskBlocks.LOGGER.error("[TaskBlocks] " + path.getFileName()
+                    + ": failed to load import: " + importFile, e);
+            }
+        }
+
+        String storedFileName = relativePath.toString().replace('\\', '/');
+
+        return new ScriptData(name, storedFileName, version, author,
+            startStopKey, enabled, debug, favorite, actions, functions);
+    }
+
+    private static Map<String, FunctionDef> parseFunctionFile(Path path) throws IOException {
+        List<String> rawLines = Files.readAllLines(path);
+        Map<String, FunctionDef> functions = new LinkedHashMap<>();
+
+        String currentFuncName = null;
+        List<String> currentFuncParams = null;
+        List<String> currentFuncBody = null;
+        int[] listenBlockCounter = {0};
+
+        int i = 0;
+        while (i < rawLines.size()) {
+            String line = rawLines.get(i).trim();
+            i++;
+
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            if (line.equalsIgnoreCase("[functions]")) continue;
+            if (line.toLowerCase().startsWith("version=")) continue;
+            if (line.toLowerCase().startsWith("owner=")) continue;
+
+            Matcher defMatch = DEF_PATTERN.matcher(line);
+            if (defMatch.matches()) {
+                if (currentFuncName != null) {
+                    TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
+                        + ": function '" + currentFuncName + "' is missing 'enddef'");
+                }
+                currentFuncName = defMatch.group(1);
+                String paramsRaw = defMatch.group(2).trim();
+                currentFuncParams = new ArrayList<>();
+                if (!paramsRaw.isEmpty()) {
+                    for (String p : paramsRaw.split(",")) {
+                        currentFuncParams.add(p.trim());
+                    }
+                }
+                currentFuncBody = new ArrayList<>();
+            } else if (line.equalsIgnoreCase("enddef")) {
+                if (currentFuncName == null) {
+                    TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
+                        + ": stray 'enddef' with no matching def");
+                } else {
+                    functions.put(currentFuncName.toLowerCase(),
+                        new FunctionDef(currentFuncName, currentFuncParams, currentFuncBody));
+                    currentFuncName = null;
+                    currentFuncParams = null;
+                    currentFuncBody = null;
+                }
+            } else if (currentFuncName != null) {
+                if (isListenBlockStart(line)) {
+                    listenBlockCounter[0]++;
+                    String blockName = "__listen_block_import_" + listenBlockCounter[0];
+                    i = consumeListenBlock(rawLines, i, line, blockName, functions, currentFuncBody, path);
+                } else {
+                    currentFuncBody.add(line);
+                }
+            } else {
+                TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
+                    + ": line outside any def block: " + line);
+            }
+        }
+
+        if (currentFuncName != null) {
+            TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
+                + ": function '" + currentFuncName + "' is missing 'enddef'");
+        }
+
+        return functions;
+    }
+
+    private static boolean isListenBlockStart(String line) {
+        return line.toLowerCase().startsWith("listen(") && line.endsWith("{");
+    }
+
+    private static int consumeListenBlock(List<String> rawLines, int startIndex, String openingLine,
+            String blockName, Map<String, FunctionDef> functions, List<String> targetList, Path path) {
+        int openBraceIdx = openingLine.lastIndexOf('{');
+        String beforeBrace = openingLine.substring(0, openBraceIdx).trim();
+
+        if (!beforeBrace.endsWith(")")) {
+            TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
+                + ": malformed listen() block header: " + openingLine);
+            targetList.add(openingLine);
+            return startIndex;
+        }
+
+        String innerArgs = beforeBrace.substring(beforeBrace.indexOf('(') + 1, beforeBrace.length() - 1);
+        List<String> parts = ArgSplitter.split(innerArgs);
+
+        if (parts.size() < 2 || parts.size() > 3) {
+            TaskBlocks.LOGGER.error("[TaskBlocks] " + path.getFileName()
+                + ": listen() block needs 2 or 3 args before '{': listen(id, condition, [intervalTicks]) { ... }");
+            targetList.add(openingLine);
+            return startIndex;
+        }
+
+        String id = parts.get(0).trim();
+        String condition = parts.get(1).trim();
+        String interval = parts.size() == 3 ? parts.get(2).trim() : null;
+
+        List<String> blockBody = new ArrayList<>();
+        int i = startIndex;
+        boolean closed = false;
+        while (i < rawLines.size()) {
+            String bodyLine = rawLines.get(i).trim();
+            i++;
+            if (bodyLine.equals("}")) {
+                closed = true;
+                break;
+            }
+            if (bodyLine.isEmpty() || bodyLine.startsWith("#")) continue;
+            if (bodyLine.equalsIgnoreCase("[actions]") || bodyLine.equalsIgnoreCase("[functions]")
+                    || bodyLine.equalsIgnoreCase("enddef")) {
+                i--;
+                break;
+            }
+            blockBody.add(bodyLine);
+        }
+
+        if (!closed) {
+            TaskBlocks.LOGGER.warn("[TaskBlocks] " + path.getFileName()
+                + ": listen() block '" + id + "' is missing a closing '}'");
+        }
+
+        functions.put(blockName.toLowerCase(), new FunctionDef(blockName, new ArrayList<>(), blockBody));
+
+        String rebuilt = "listen(" + id + "," + condition + ",call(" + blockName + ")"
+            + (interval != null ? "," + interval : "") + ")";
+        targetList.add(rebuilt);
+
+        return i;
     }
 
     public static void saveScript(ScriptData script) {
-    Path filePath = SCRIPTS_DIR.resolve(script.fileName);
-    try {
-        List<String> lines = Files.readAllLines(filePath);
-        List<String> newLines = new ArrayList<>();
-        for (String line : lines) {
-            if (line.trim().startsWith("enabled=")) {
-                newLines.add("enabled=" + script.enabled);
-            } else {
-                newLines.add(line);
+        Path filePath = SCRIPTS_DIR.resolve(script.fileName);
+        try {
+            List<String> lines = Files.readAllLines(filePath);
+            List<String> newLines = new ArrayList<>();
+            boolean sawFavorite = false;
+
+            for (String line : lines) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("enabled=")) {
+                    newLines.add("enabled=" + script.enabled);
+                } else if (trimmed.startsWith("favorite=")) {
+                    newLines.add("favorite=" + script.favorite);
+                    sawFavorite = true;
+                } else {
+                    newLines.add(line);
+                }
             }
+
+            if (!sawFavorite) {
+                int insertAt = 0;
+                for (int i = 0; i < newLines.size(); i++) {
+                    if (newLines.get(i).trim().startsWith("enabled=")) {
+                        insertAt = i + 1;
+                        break;
+                    }
+                }
+                newLines.add(insertAt, "favorite=" + script.favorite);
+            }
+
+            Files.write(filePath, newLines);
+        } catch (IOException e) {
+            TaskBlocks.LOGGER.error("[TaskBlocks] Failed to save script: " + script.fileName, e);
         }
-        Files.write(filePath, newLines);
-    } catch (IOException e) {
-        TaskBlocks.LOGGER.error("[TaskBlocks] Failed to save script: " + script.fileName, e);
-    }
     }
 
-    // ============================================================
-    // Creates a new .tbs file with a minimal header and an empty
-    // actions body. Used by the "New Script" screen. If a file with
-    // the generated name already exists, a numeric suffix is appended
-    // rather than overwriting it. Returns the generated file name on
-    // success (needed to hand off to the macro recorder), or null on
-    // failure.
-    // ============================================================
     public static String createScript(String name, String author, boolean debug, String startStopKey) {
         if (!Files.exists(SCRIPTS_DIR)) {
             try {
@@ -208,6 +414,7 @@ public class ScriptLoader {
             + "author=" + author + "\n"
             + "version=1.0\n"
             + "enabled=true\n"
+            + "favorite=false\n"
             + "debug=" + debug + "\n"
             + "start_stop_key=" + key + "\n"
             + "\n"
@@ -223,13 +430,6 @@ public class ScriptLoader {
         }
     }
 
-    // ============================================================
-    // Replaces everything after [actions] with the given lines (plus
-    // a closing 'end'). Used by the macro recorder to write what it
-    // captured into the script created just before recording started.
-    // Only intended for a freshly-created, effectively-empty script —
-    // it overwrites the existing actions body rather than appending.
-    // ============================================================
     public static boolean appendRecordedActions(String fileName, List<String> lines) {
         Path filePath = SCRIPTS_DIR.resolve(fileName);
         try {

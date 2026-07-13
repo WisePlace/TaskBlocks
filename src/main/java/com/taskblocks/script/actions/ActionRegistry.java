@@ -1,10 +1,10 @@
 package com.taskblocks.script.actions;
 
-import com.taskblocks.TaskBlocks;
-import com.taskblocks.client.TaskBlocksNotifier;
-
 import java.util.ArrayList;
 import java.util.List;
+
+import com.taskblocks.TaskBlocks;
+import com.taskblocks.client.TaskBlocksNotifier;
 
 public class ActionRegistry {
 
@@ -24,6 +24,7 @@ public class ActionRegistry {
         FunctionActions.register();
         DisplayActions.register();
         MathActions.register();
+        SoundActions.register();
         LiteralAssignmentActions.register();
     }
 

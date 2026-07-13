@@ -1,10 +1,17 @@
 package com.taskblocks.client;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.lwjgl.glfw.GLFW;
+
 import com.taskblocks.TaskBlocks;
 import com.taskblocks.client.gui.ScriptMenuScreen;
 import com.taskblocks.script.ScriptData;
 import com.taskblocks.script.ScriptLoader;
 import com.taskblocks.script.ScriptRunner;
+
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -12,11 +19,6 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
-import org.lwjgl.glfw.GLFW;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 // Fabric client entry point: keybind registration, the main per-tick
 // loop (menu open, script trigger keybinds, notifier flush, recorder/
@@ -51,11 +53,21 @@ public class TaskBlocksClient implements ClientModInitializer {
             TASKBLOCKS_CATEGORY
         ));
 
+        DefaultScriptsInstaller.installMissingFiles();
         reloadScripts();
         ScriptOverlay.register();
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             UpdateChecker.checkOnce();
+        });
+
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            if (ScriptRunner.isRunning()) {
+                ScriptRunner.stop();
+                TaskBlocks.LOGGER.info("[TaskBlocks] Script stopped due to disconnect.");
+            }
+            com.taskblocks.script.MacroRecorder.cancel();
+            com.taskblocks.script.LookRecorder.cancel();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

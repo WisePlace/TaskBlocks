@@ -1,0 +1,13 @@
+name=Example Script
+author=TaskBlocks
+version=1.0
+enabled=true
+favorite=false
+debug=true
+start_stop_key=NONE
+import=default/default functions/example
+
+[actions]
+say(This is the default example script!, local)
+call(greet, World)
+end

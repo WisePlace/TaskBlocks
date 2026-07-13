@@ -11,11 +11,12 @@ public class ScriptData {
     public String startStopKey;
     public boolean enabled;
     public boolean debug;
+    public boolean favorite;
     public List<String> actions;
     public Map<String, FunctionDef> functions;
 
     public ScriptData(String name, String fileName, String version, String author,
-                      String startStopKey, boolean enabled, boolean debug,
+                      String startStopKey, boolean enabled, boolean debug, boolean favorite,
                       List<String> actions, Map<String, FunctionDef> functions) {
         this.name = name;
         this.fileName = fileName;
@@ -24,6 +25,7 @@ public class ScriptData {
         this.startStopKey = startStopKey;
         this.enabled = enabled;
         this.debug = debug;
+        this.favorite = favorite;
         this.actions = actions;
         this.functions = functions;
     }

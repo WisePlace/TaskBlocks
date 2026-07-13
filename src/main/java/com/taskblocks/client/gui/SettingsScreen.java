@@ -2,6 +2,7 @@ package com.taskblocks.client.gui;
 
 import com.taskblocks.client.ScriptOverlay;
 import com.taskblocks.client.TaskBlocksClient;
+import com.taskblocks.client.TaskBlocksSettings;
 import com.taskblocks.script.AntiAfk;
 import com.taskblocks.script.LookRecorder;
 
@@ -16,11 +17,11 @@ import net.minecraft.text.Text;
 
 // Settings screen reached from the J menu's Settings button: overlay
 // toggle, J menu keybind rebind, look recorder detail mode + trigger,
-// and anti-AFK controls.
+// anti-AFK controls, and the default scripts visibility toggle.
 public class SettingsScreen extends Screen {
 
     private static final int PANEL_W = 320;
-    private static final int PANEL_H = 210;
+    private static final int PANEL_H = 240;
     private static final int PAD     = 14;
     private static final int HALF_W  = (PANEL_W - PAD * 2 - 10) / 2;
 
@@ -95,11 +96,21 @@ public class SettingsScreen extends Screen {
                 AntiAfk.setEnabled(!AntiAfk.isEnabled());
                 btn.setMessage(Text.literal("Anti-AFK: " + (AntiAfk.isEnabled() ? "ON" : "OFF")));
             }
-        ).dimensions(px + PAD, py + 100, PANEL_W - PAD * 2, 20).build());
+        ).dimensions(px + PAD, py + 100, HALF_W, 20).build());
+
+        addDrawableChild(ButtonWidget.builder(
+            Text.literal("Default Scripts: " + (TaskBlocksSettings.isShowDefaultScripts() ? "ON" : "OFF")),
+            btn -> {
+                boolean newValue = !TaskBlocksSettings.isShowDefaultScripts();
+                TaskBlocksSettings.setShowDefaultScripts(newValue);
+                TaskBlocksClient.reloadScripts();
+                btn.setMessage(Text.literal("Default Scripts: " + (newValue ? "ON" : "OFF")));
+            }
+        ).dimensions(px + PAD + HALF_W + 10, py + 100, HALF_W, 20).build());
 
         double intervalRatio = (AntiAfk.getIntervalSeconds() - AFK_INTERVAL_MIN)
             / (double) (AFK_INTERVAL_MAX - AFK_INTERVAL_MIN);
-        addDrawableChild(new SliderWidget(px + PAD, py + 130, HALF_W, 20,
+        addDrawableChild(new SliderWidget(px + PAD, py + 160, HALF_W, 20,
                 intervalLabel(AntiAfk.getIntervalSeconds()), intervalRatio) {
             @Override
             protected void updateMessage() {
@@ -118,7 +129,7 @@ public class SettingsScreen extends Screen {
 
         double nudgeRatio = (AntiAfk.getNudgeRangeDegrees() - AFK_NUDGE_MIN)
             / (double) (AFK_NUDGE_MAX - AFK_NUDGE_MIN);
-        addDrawableChild(new SliderWidget(px + PAD + HALF_W + 10, py + 130, HALF_W, 20,
+        addDrawableChild(new SliderWidget(px + PAD + HALF_W + 10, py + 160, HALF_W, 20,
                 nudgeLabel(AntiAfk.getNudgeRangeDegrees()), nudgeRatio) {
             @Override
             protected void updateMessage() {
